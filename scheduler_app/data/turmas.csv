@@ -1,0 +1,22 @@
+nome,carga_horaria,disciplinas,sala
+Turma A,20,"Matemática,Física,Química,Biologia,História",101
+Turma B,20,"Geografia,Português,Matemática,Física,Química",102
+si -Noite,20,"Física,Geografia,Matemática,Português,Química",102
+Turma C,20,"Biologia,Química,História,Português,Geografia",103
+Turma D,20,"Matemática,Física,História,Geografia,Português",104
+Turma E,20,"Química,Biologia,Física,Matemática,História",105
+Turma F,20,"Geografia,Português,Biologia,Química,Física",106
+Turma G,20,"História,Matemática,Português,Biologia,Geografia",107
+Turma H,20,"Física,Química,Matemática,História,Geografia",108
+Turma I,20,"Português,Biologia,Química,Geografia,Matemática",109
+Turma J,20,"Matemática,História,Física,Biologia,Português",110
+Turma K,20,"Química,Geografia,Português,Matemática,História",111
+Turma L,20,"Biologia,Física,Matemática,Química,Português",112
+Turma M,20,"História,Português,Biologia,Física,Matemática",113
+Turma N,20,"Geografia,Química,História,Português,Biologia",114
+Turma O,20,"Física,Matemática,Biologia,Geografia,Química",115
+Turma P,20,"Português,Historia,Matemática,Física,Biologia",116
+Turma Q,20,"Química,Biologia,Português,História,Física",117
+Turma R,20,"Matemática,Geografia,Biologia,Química,História",118
+Turma S,20,"História,Biologia,Física,Português,Geografia",119
+Turma T,20,"Português,Química,Matemática,Biologia,Física",120
