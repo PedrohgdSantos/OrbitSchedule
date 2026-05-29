@@ -3,14 +3,15 @@ from tkinter import ttk, messagebox
 from typing import List
 from models import Turma, Sala # Importa Sala também para obter a lista de salas
 from data_handler import DataHandler
+from rounded_frame import RoundedFrame
 import os
 
 class TurmaManager(tk.Frame):
     def __init__(self, parent, controller):
-        super().__init__(parent)
+        super().__init__(parent, bg="#050608")
         self.controller = controller # O controller é a instância de SchedulerApp
         self.turmas: List[Turma] = []
-        self.file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scheduler_app", "data", "turmas.csv")
+        self.file_path = os.path.join(os.path.dirname(__file__), "data", "turmas.csv")
         self.create_widgets() # Primeiro, cria os widgets, incluindo self.tree e o Combobox
         self.load_turmas() # Depois, carrega as turmas e atualiza a treeview
 
@@ -25,41 +26,46 @@ class TurmaManager(tk.Frame):
 
     def create_widgets(self):
         """Cria os widgets da interface para gerenciamento de turmas."""
+        # Cabeçalho do formulário
+        ttk.Label(self, text="Dados da Turma", style="CardHeader.TLabel").pack(pady=(10, 0), padx=10, anchor="w")
+
         # Frame de entrada de dados
-        input_frame = ttk.LabelFrame(self, text="Dados da Turma", padding="10")
+        input_frame = RoundedFrame(self, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
         input_frame.pack(pady=10, padx=10, fill="x")
 
-        ttk.Label(input_frame, text="Nome:").grid(row=0, column=0, sticky="w", pady=2)
-        self.nome_entry = ttk.Entry(input_frame, width=40)
+        ttk.Label(input_frame.inner_frame, text="Nome:").grid(row=0, column=0, sticky="w", pady=2)
+        self.nome_entry = ttk.Entry(input_frame.inner_frame, width=40)
         self.nome_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(input_frame, text="Carga Horária:").grid(row=1, column=0, sticky="w", pady=2)
-        self.carga_horaria_entry = ttk.Entry(input_frame, width=40)
+        ttk.Label(input_frame.inner_frame, text="Carga Horária:").grid(row=1, column=0, sticky="w", pady=2)
+        self.carga_horaria_entry = ttk.Entry(input_frame.inner_frame, width=40)
         self.carga_horaria_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(input_frame, text="Disciplinas (separadas por vírgula):").grid(row=2, column=0, sticky="w", pady=2)
-        self.disciplinas_entry = ttk.Entry(input_frame, width=40)
+        ttk.Label(input_frame.inner_frame, text="Disciplinas (separadas por vírgula):").grid(row=2, column=0, sticky="w", pady=2)
+        self.disciplinas_entry = ttk.Entry(input_frame.inner_frame, width=40)
         self.disciplinas_entry.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(input_frame, text="Sala Preferencial:").grid(row=3, column=0, sticky="w", pady=2)
+        ttk.Label(input_frame.inner_frame, text="Sala Preferencial:").grid(row=3, column=0, sticky="w", pady=2)
         # Combobox para seleção da sala preferencial
-        self.sala_preferencial_combobox = ttk.Combobox(input_frame, width=38, state="readonly")
+        self.sala_preferencial_combobox = ttk.Combobox(input_frame.inner_frame, width=38, state="readonly")
         self.sala_preferencial_combobox.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
         self.update_sala_options() # Carrega as opções de salas no Combobox
 
         # Botões de ação
-        btn_frame = ttk.Frame(input_frame)
-        btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
+        btn_frame = RoundedFrame(input_frame.inner_frame, bg_color="#111827", border_color="#1F2937", corner_radius=16, padding=10)
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=10, sticky="ew")
 
-        ttk.Button(btn_frame, text="Adicionar", command=self.add_turma).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Atualizar", command=self.update_turma).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Deletar", command=self.delete_turma).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Adicionar", command=self.add_turma, style="Accent.TButton").pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Atualizar", command=self.update_turma, style="Accent.TButton").pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Deletar", command=self.delete_turma, style="Danger.TButton").pack(side="left", padx=5)
         ttk.Button(btn_frame, text="Limpar Campos", command=self.clear_fields).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="ℹ️ Como adicionar", command=self.show_info).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="ℹ️ Como adicionar", command=self.show_info, style="Accent.TButton").pack(side="left", padx=5)
 
 
         # Treeview para exibir turmas
-        self.tree = ttk.Treeview(self, columns=("Nome", "Carga Horária", "Disciplinas", "Sala Preferencial"), show="headings")
+        tree_container = RoundedFrame(self, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=12)
+        tree_container.pack(pady=10, padx=10, fill="both", expand=True)
+        self.tree = ttk.Treeview(tree_container.inner_frame, columns=("Nome", "Carga Horária", "Disciplinas", "Sala Preferencial"), show="headings", selectmode="browse")
         self.tree.heading("Nome", text="Nome")
         self.tree.heading("Carga Horária", text="Carga Horária")
         self.tree.heading("Disciplinas", text="Disciplinas")
@@ -68,7 +74,7 @@ class TurmaManager(tk.Frame):
         self.tree.column("Carga Horária", width=100)
         self.tree.column("Disciplinas", width=200)
         self.tree.column("Sala Preferencial", width=100)
-        self.tree.pack(pady=10, padx=10, fill="both", expand=True)
+        self.tree.pack(fill="both", expand=True)
         self.tree.bind("<<TreeviewSelect>>", self.load_selected_turma)
 
     def update_sala_options(self):

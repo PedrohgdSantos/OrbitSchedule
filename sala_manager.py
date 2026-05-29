@@ -3,15 +3,16 @@ from tkinter import ttk, messagebox
 from typing import List
 from models import Sala
 from data_handler import DataHandler
+from rounded_frame import RoundedFrame
 import os
 
 class SalaManager(tk.Frame):
     def __init__(self, parent, controller):
-        super().__init__(parent)
+        super().__init__(parent, bg="#050608")
         self.controller = controller
         self.salas: List[Sala] = []
         # Define o caminho do arquivo CSV de salas.
-        self.file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scheduler_app", "data", "salas.csv")
+        self.file_path = os.path.join(os.path.dirname(__file__), "data", "salas.csv")
         self.create_widgets() # Primeiro, cria os widgets, incluindo self.tree
         self.load_salas() # Depois, carrega as salas e atualiza a treeview
 
@@ -29,38 +30,43 @@ class SalaManager(tk.Frame):
 
     def create_widgets(self):
         """Cria os widgets da interface para gerenciamento de salas."""
+        # Cabeçalho do formulário
+        ttk.Label(self, text="Dados da Sala", style="CardHeader.TLabel").pack(pady=(10, 0), padx=10, anchor="w")
+
         # Frame para entrada de dados da sala.
-        input_frame = ttk.LabelFrame(self, text="Dados da Sala", padding="10")
+        input_frame = RoundedFrame(self, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
         input_frame.pack(pady=10, padx=10, fill="x")
 
         # Campo para o número da sala.
-        ttk.Label(input_frame, text="Número da Sala:").grid(row=0, column=0, sticky="w", pady=2)
-        self.numero_sala_entry = ttk.Entry(input_frame, width=40)
+        ttk.Label(input_frame.inner_frame, text="Número da Sala:").grid(row=0, column=0, sticky="w", pady=2)
+        self.numero_sala_entry = ttk.Entry(input_frame.inner_frame, width=40)
         self.numero_sala_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
 
         # Checkbox para indicar se é um laboratório.
-        ttk.Label(input_frame, text="É Laboratório?").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Label(input_frame.inner_frame, text="É Laboratório?").grid(row=1, column=0, sticky="w", pady=2)
         self.is_laboratorio_var = tk.BooleanVar()
-        ttk.Checkbutton(input_frame, variable=self.is_laboratorio_var).grid(row=1, column=1, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(input_frame.inner_frame, variable=self.is_laboratorio_var).grid(row=1, column=1, sticky="w", padx=5, pady=2)
 
         # Botões de ação (Adicionar, Atualizar, Deletar, Limpar Campos).
-        btn_frame = ttk.Frame(input_frame)
-        btn_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        btn_frame = RoundedFrame(input_frame.inner_frame, bg_color="#111827", border_color="#1F2937", corner_radius=16, padding=10)
+        btn_frame.grid(row=2, column=0, columnspan=2, pady=10, sticky="ew")
 
-        ttk.Button(btn_frame, text="Adicionar", command=self.add_sala).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Atualizar", command=self.update_sala).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Deletar", command=self.delete_sala).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Adicionar", command=self.add_sala, style="Accent.TButton").pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Atualizar", command=self.update_sala, style="Accent.TButton").pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Deletar", command=self.delete_sala, style="Danger.TButton").pack(side="left", padx=5)
         ttk.Button(btn_frame, text="Limpar Campos", command=self.clear_fields).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="ℹ️ Como adicionar", command=self.show_info).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="ℹ️ Como adicionar", command=self.show_info, style="Accent.TButton").pack(side="left", padx=5)
 
 
         # Treeview para exibir a lista de salas.
-        self.tree = ttk.Treeview(self, columns=("Número da Sala", "É Laboratório"), show="headings")
+        tree_container = RoundedFrame(self, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=12)
+        tree_container.pack(pady=10, padx=10, fill="both", expand=True)
+        self.tree = ttk.Treeview(tree_container.inner_frame, columns=("Número da Sala", "É Laboratório"), show="headings", selectmode="browse")
         self.tree.heading("Número da Sala", text="Número da Sala")
         self.tree.heading("É Laboratório", text="É Laboratório")
         self.tree.column("Número da Sala", width=150)
         self.tree.column("É Laboratório", width=150)
-        self.tree.pack(pady=10, padx=10, fill="both", expand=True)
+        self.tree.pack(fill="both", expand=True)
         # Associa a função load_selected_sala ao evento de seleção na Treeview.
         self.tree.bind("<<TreeviewSelect>>", self.load_selected_sala)
 
