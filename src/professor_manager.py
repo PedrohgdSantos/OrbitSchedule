@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List
-from models import Professor
-from data_handler import DataHandler
-from rounded_frame import RoundedFrame
+from .models import Professor
+from .data_handler import DataHandler
+from .rounded_frame import RoundedFrame
 import os
 
 class ProfessorManager(tk.Frame):
@@ -11,7 +11,7 @@ class ProfessorManager(tk.Frame):
         super().__init__(parent, bg="#050608")
         self.controller = controller
         self.professores: List[Professor] = []
-        self.file_path = os.path.join(os.path.dirname(__file__), "data", "professores.csv")
+        self.file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "professores.csv"))
         self.create_widgets() # Primeiro, cria os widgets, incluindo self.tree
         self.load_professores() # Depois, carrega os professores e atualiza a treeview
 

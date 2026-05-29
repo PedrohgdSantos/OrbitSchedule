@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List
-from models import Turma, Sala # Importa Sala também para obter a lista de salas
-from data_handler import DataHandler
-from rounded_frame import RoundedFrame
+from .models import Turma, Sala # Importa Sala também para obter a lista de salas
+from .data_handler import DataHandler
+from .rounded_frame import RoundedFrame
 import os
 
 class TurmaManager(tk.Frame):
@@ -11,7 +11,7 @@ class TurmaManager(tk.Frame):
         super().__init__(parent, bg="#050608")
         self.controller = controller # O controller é a instância de SchedulerApp
         self.turmas: List[Turma] = []
-        self.file_path = os.path.join(os.path.dirname(__file__), "data", "turmas.csv")
+        self.file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "turmas.csv"))
         self.create_widgets() # Primeiro, cria os widgets, incluindo self.tree e o Combobox
         self.load_turmas() # Depois, carrega as turmas e atualiza a treeview
 

@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List
-from models import Sala
-from data_handler import DataHandler
-from rounded_frame import RoundedFrame
+from .models import Sala
+from .data_handler import DataHandler
+from .rounded_frame import RoundedFrame
 import os
 
 class SalaManager(tk.Frame):
@@ -11,8 +11,8 @@ class SalaManager(tk.Frame):
         super().__init__(parent, bg="#050608")
         self.controller = controller
         self.salas: List[Sala] = []
-        # Define o caminho do arquivo CSV de salas.
-        self.file_path = os.path.join(os.path.dirname(__file__), "data", "salas.csv")
+        # Define o caminho do arquivo CSV de salas, relativo à raiz do projeto.
+        self.file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "salas.csv"))
         self.create_widgets() # Primeiro, cria os widgets, incluindo self.tree
         self.load_salas() # Depois, carrega as salas e atualiza a treeview
 

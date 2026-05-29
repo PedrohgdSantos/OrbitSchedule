@@ -42,14 +42,16 @@ Um projeto de gerenciamento escolar em Python com interface gráfica Tkinter. O 
 
 ## 🧩 Estrutura do projeto
 
-- `main.py` — interface principal e fluxo da aplicação
-- `data_handler.py` — leitura e gravação de arquivos CSV
-- `scheduler.py` — algoritmo que monta a grade horária
-- `models.py` — definição das classes de dados
-- `professor_manager.py` — cadastro e edição de professores
-- `sala_manager.py` — cadastro e edição de salas
-- `turma_manager.py` — cadastro e edição de turmas
-- `rounded_frame.py` — componentes visuais com bordas arredondadas
+- `main.py` — arquivo de entrada que inicia a aplicação
+- `src/` — código-fonte do projeto
+  - `src/app.py` — interface principal e orquestração da aplicação
+  - `src/data_handler.py` — leitura e gravação de arquivos CSV
+  - `src/scheduler.py` — algoritmo que monta a grade horária
+  - `src/models.py` — definição das classes de dados
+  - `src/professor_manager.py` — cadastro e edição de professores
+  - `src/sala_manager.py` — cadastro e edição de salas
+  - `src/turma_manager.py` — cadastro e edição de turmas
+  - `src/rounded_frame.py` — componentes visuais com bordas arredondadas
 
 ---
 

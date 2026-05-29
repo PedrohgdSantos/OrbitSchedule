@@ -1,6 +1,6 @@
 import random
 from typing import List, Dict, Optional
-from models import Professor, Turma, Sala, Aula
+from .models import Professor, Turma, Sala, Aula
 
 # A classe Scheduler é responsável por gerar a grade horária, aplicando as regras de negócio.
 class Scheduler:

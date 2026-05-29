@@ -1,6 +1,6 @@
 import csv
 from typing import List, Dict, Type, Any
-from models import Professor, Turma, Sala, Aula
+from .models import Professor, Turma, Sala, Aula
 
 # A classe DataHandler é responsável por ler e escrever dados em arquivos CSV.
 # Ela contém métodos estáticos, o que significa que podem ser chamados diretamente da classe sem criar uma instância.
