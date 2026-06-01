@@ -82,19 +82,46 @@ class SchedulerApp:
         self.style.configure("TCombobox", fieldbackground="#111827", background="#111827", foreground="#E2E8F0")
         self.style.configure("TCheckbutton", background="#0F172A", foreground="#E2E8F0")
 
+    def _on_canvas_configure(self, event, canvas, scrollable_frame_id):
+        """Atualiza a largura da janela do scrollable_frame para corresponder à largura do canvas."""
+        canvas.itemconfig(scrollable_frame_id, width=event.width)
+
     def create_main_tab(self):
         """Cria a aba principal para a geração e visualização da grade horária."""
         main_frame = ttk.Frame(self.notebook, style="App.TFrame")
         self.notebook.add(main_frame, text="Gerar Grade Horária")
 
+        # Cria um canvas com uma barra de rolagem
+        canvas = tk.Canvas(main_frame, bg="#0F172A", highlightthickness=0)
+        canvas.pack(side="left", fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollbar.pack(side="right", fill="y")
+
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollable_frame = ttk.Frame(canvas, style="App.TFrame")
+
+        # Store the ID of the window created for the scrollable_frame
+        scrollable_frame_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+        # Bind _on_canvas_configure to the canvas's Configure event to handle horizontal resizing
+        canvas.bind("<Configure>", lambda event: self._on_canvas_configure(event, canvas, scrollable_frame_id))
+
+        def on_frame_configure(event):
+            """Atualiza a região de rolagem do canvas."""
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            
+        scrollable_frame.bind("<Configure>", on_frame_configure)
+
         # Cabeçalho da aplicação.
-        header = ttk.Label(main_frame, text="Gerador de Grade Horária Acadêmica", style="Header.TLabel")
+        header = ttk.Label(scrollable_frame, text="Gerador de Grade Horária Acadêmica", style="Header.TLabel")
         header.pack(pady=(16, 2), padx=10, anchor="w")
-        subheader = ttk.Label(main_frame, text="Organize horários com visual moderno e intuitivo.", style="Subheader.TLabel")
+        subheader = ttk.Label(scrollable_frame, text="Organize horários com visual moderno e intuitivo.", style="Subheader.TLabel")
         subheader.pack(padx=10, anchor="w")
 
         # Painel de métricas rápidas.
-        stats_frame = ttk.Frame(main_frame, style="App.TFrame")
+        stats_frame = ttk.Frame(scrollable_frame, style="App.TFrame")
         stats_frame.pack(fill="x", padx=10, pady=(14, 10))
 
         self.dashboard_labels = {}
@@ -106,16 +133,16 @@ class SchedulerApp:
             ("Aulas geradas", "0"),
         ]
         for title, value in stats:
-            card = RoundedFrame(stats_frame, bg_color="#111827", border_color="#4F46E5", corner_radius=18, padding=14)
+            card = RoundedFrame(stats_frame, bg_color="#111827", border_color="#4F46E5", corner_radius=12, padding=10, height=80)
             card.pack(side="left", expand=True, fill="both", padx=5)
             self.stats_cards.append(card)
             ttk.Label(card.inner_frame, text=title, style="CardHeader.TLabel").pack(anchor="w")
             label_value = ttk.Label(card.inner_frame, text=value, style="CardMetric.TLabel")
-            label_value.pack(anchor="w", pady=(10, 0))
+            label_value.pack(anchor="w", pady=(2, 0))
             self.dashboard_labels[title] = label_value
 
         # Frame para botões de ação da grade.
-        self.action_frame = RoundedFrame(main_frame, bg_color="#111827", border_color="#1F2937", corner_radius=20, padding=14)
+        self.action_frame = RoundedFrame(scrollable_frame, bg_color="#111827", border_color="#1F2937", corner_radius=12, padding=10, height=60)
         self.action_frame.pack(padx=10, pady=10, fill="x")
 
         ttk.Button(self.action_frame.inner_frame, text="Gerar Grade", command=self.gerar_grade, style="Accent.TButton").pack(side="left", padx=6)
@@ -123,21 +150,21 @@ class SchedulerApp:
         ttk.Button(self.action_frame.inner_frame, text="Zerar Aulas", command=self.clear_grade, style="Secondary.TButton").pack(side="left", padx=6)
         ttk.Button(self.action_frame.inner_frame, text="ℹ️ Como usar", command=self.show_info_main, style="Secondary.TButton").pack(side="left", padx=6)
 
-        self.grade_summary_label = ttk.Label(main_frame, text="Nenhuma grade gerada ainda.", style="Info.TLabel")
+        self.grade_summary_label = ttk.Label(scrollable_frame, text="Nenhuma grade gerada ainda.", style="Info.TLabel")
         self.grade_summary_label.pack(padx=10, pady=(4, 0), anchor="w")
 
         # Área para exibir alertas e status.
-        ttk.Label(main_frame, text="Alertas e Status", style="CardHeader.TLabel").pack(padx=10, pady=(14, 4), anchor="w")
-        self.alert_container = RoundedFrame(main_frame, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
+        ttk.Label(scrollable_frame, text="Alertas e Status", style="CardHeader.TLabel").pack(padx=10, pady=(14, 4), anchor="w")
+        self.alert_container = RoundedFrame(scrollable_frame, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
         self.alert_container.pack(pady=0, padx=10, fill="x")
         self.alert_text = tk.Text(self.alert_container.inner_frame, height=5, font=("Consolas", 10), relief="flat", bg="#111827", fg="#E2E8F0", bd=0)
-        self.alert_text.pack(fill="x", expand=True)
+        self.alert_text.pack(fill="both", expand=True)
         self.alert_text.config(state=tk.DISABLED) # Torna o campo de texto somente leitura.
 
         # Treeview para exibir a grade horária gerada.
-        ttk.Label(main_frame, text="Grade Horária Gerada", style="CardHeader.TLabel").pack(padx=10, pady=(16, 4), anchor="w")
-        self.grade_container = RoundedFrame(main_frame, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
-        self.grade_container.pack(pady=0, padx=10, fill="both", expand=True)
+        ttk.Label(scrollable_frame, text="Grade Horária Gerada", style="CardHeader.TLabel").pack(padx=10, pady=(16, 4), anchor="w")
+        self.grade_container = RoundedFrame(scrollable_frame, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
+        self.grade_container.pack(pady=0, padx=10, fill="x")
 
         self.grade_tree = ttk.Treeview(self.grade_container.inner_frame, columns=("Dia", "Horário", "Bloco", "Turma", "Disciplina", "Professor", "Sala"), show="headings", selectmode="browse")
         self.grade_tree.heading("Dia", text="Dia")
@@ -164,9 +191,9 @@ class SchedulerApp:
         self.update_dashboard_summary()
 
         # Adiciona barra de rolagem à Treeview.
-        scrollbar = ttk.Scrollbar(self.grade_container.inner_frame, orient="vertical", command=self.grade_tree.yview)
-        scrollbar.pack(side="right", fill="y")
-        self.grade_tree.config(yscrollcommand=scrollbar.set)
+        tree_scrollbar = ttk.Scrollbar(self.grade_container.inner_frame, orient="vertical", command=self.grade_tree.yview)
+        tree_scrollbar.pack(side="right", fill="y")
+        self.grade_tree.config(yscrollcommand=tree_scrollbar.set)
 
     def create_professor_tab(self):
         """Cria a aba para gerenciamento de professores."""
