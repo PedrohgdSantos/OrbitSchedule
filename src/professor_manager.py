@@ -1,180 +1,231 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List
+import os
+
 from .models import Professor
 from .data_handler import DataHandler
-from .rounded_frame import RoundedFrame
-import os
+
+BG_PAGE    = "#F5F6FA"
+BG_CARD    = "#FFFFFF"
+ORANGE     = "#F97316"
+ORANGE_DIM = "#FFF7ED"
+TEXT_DARK  = "#111827"
+TEXT_MID   = "#6B7280"
+TEXT_LIGHT = "#9CA3AF"
+BORDER     = "#E5E7EB"
+RED        = "#DC2626"
+FONT       = "Segoe UI"
+
+
+def _card(parent, **kwargs):
+    f = tk.Frame(parent, bg=BG_CARD, **kwargs)
+    f.config(highlightbackground=BORDER, highlightthickness=1, highlightcolor=BORDER)
+    return f
+
+
+def _btn(parent, text, cmd, primary=False, danger=False):
+    if primary:
+        bg, fg, abg = ORANGE, "#FFFFFF", "#EA6C0A"
+    elif danger:
+        bg, fg, abg = RED, "#FFFFFF", "#B91C1C"
+    else:
+        bg, fg, abg = BG_PAGE, TEXT_DARK, BORDER
+    b = tk.Button(
+        parent, text=text, command=cmd,
+        bg=bg, fg=fg, activebackground=abg,
+        activeforeground="#FFFFFF" if (primary or danger) else TEXT_DARK,
+        font=(FONT, 10), relief="flat", bd=0,
+        padx=14, pady=7, cursor="hand2",
+    )
+    if not primary and not danger:
+        b.config(highlightbackground=BORDER, highlightthickness=1)
+    return b
+
+
+def _entry(parent, width=50):
+    e = tk.Entry(
+        parent, font=(FONT, 10), bg=BG_PAGE, fg=TEXT_DARK,
+        relief="flat", bd=0, width=width,
+        highlightbackground=BORDER, highlightthickness=1,
+        insertbackground=TEXT_DARK,
+    )
+    return e
+
 
 class ProfessorManager(tk.Frame):
     def __init__(self, parent, controller):
-        super().__init__(parent, bg="#050608")
+        super().__init__(parent, bg=BG_PAGE)
         self.controller = controller
         self.professores: List[Professor] = []
-        self.file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "professores.csv"))
-        self.create_widgets() # Primeiro, cria os widgets, incluindo self.tree
-        self.load_professores() # Depois, carrega os professores e atualiza a treeview
+        self.file_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "data", "professores.csv")
+        )
+        self._build_ui()
+        self._load()
 
-    def load_professores(self):
-        """Carrega os professores do arquivo CSV."""
+    def _load(self):
         self.professores = DataHandler.load_professores(self.file_path)
-        self.update_treeview()
+        self._refresh_tree()
 
-    def save_professores(self):
-        """Salva os professores no arquivo CSV."""
+    def _save(self):
         DataHandler.save_professores(self.file_path, self.professores)
 
-    def create_widgets(self):
-        # Cabeçalho do formulário
-        ttk.Label(self, text="Dados do Professor", style="CardHeader.TLabel").pack(pady=(10, 0), padx=10, anchor="w")
+    # ── UI ─────────────────────────────────────────────────────────────────────
 
-        # Frame de entrada de dados
-        input_frame = RoundedFrame(self, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
-        input_frame.pack(pady=10, padx=10, fill="x")
+    def _build_ui(self):
+        PAD = 28
 
-        ttk.Label(input_frame.inner_frame, text="Nome:").grid(row=0, column=0, sticky="w", pady=2)
-        self.nome_entry = ttk.Entry(input_frame.inner_frame, width=40)
-        self.nome_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+        # Header
+        hdr = tk.Frame(self, bg=BG_PAGE)
+        hdr.pack(fill="x", padx=PAD, pady=(26, 0))
+        tk.Label(hdr, text="Professores", bg=BG_PAGE, fg=TEXT_DARK, font=(FONT, 22, "bold")).pack(anchor="w")
+        tk.Label(hdr, text="Gerencie o cadastro de professores.", bg=BG_PAGE, fg=TEXT_MID, font=(FONT, 10)).pack(anchor="w", pady=(3, 0))
 
-        ttk.Label(input_frame.inner_frame, text="Disciplinas (separadas por vírgula):").grid(row=1, column=0, sticky="w", pady=2)
-        self.disciplinas_entry = ttk.Entry(input_frame.inner_frame, width=40)
-        self.disciplinas_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
+        # Form card
+        form = _card(self)
+        form.pack(fill="x", padx=PAD, pady=(20, 0))
 
-        ttk.Label(input_frame.inner_frame, text="Disponibilidade (Dia-Bloco, ex: Seg-Manhã):").grid(row=2, column=0, sticky="w", pady=2)
-        self.disponibilidade_entry = ttk.Entry(input_frame.inner_frame, width=40)
-        self.disponibilidade_entry.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
+        grid = tk.Frame(form, bg=BG_CARD)
+        grid.pack(fill="x", padx=20, pady=(18, 6))
+        grid.columnconfigure(1, weight=1)
 
-        # Botões de ação
-        btn_frame = RoundedFrame(input_frame.inner_frame, bg_color="#111827", border_color="#1F2937", corner_radius=16, padding=10)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=10, sticky="ew")
+        fields = [
+            ("Nome:",                                  "nome_entry"),
+            ("Disciplinas (separadas por vírgula):",   "disciplinas_entry"),
+            ("Disponibilidade (ex: Seg-Manhã,Ter-Noite):", "disponibilidade_entry"),
+        ]
+        for row_idx, (lbl_text, attr) in enumerate(fields):
+            tk.Label(grid, text=lbl_text, bg=BG_CARD, fg=TEXT_MID, font=(FONT, 9)).grid(
+                row=row_idx, column=0, sticky="w", pady=(0, 4),
+            )
+            entry = _entry(grid)
+            entry.grid(row=row_idx, column=1, sticky="ew", padx=(14, 0), pady=(0, 12), ipady=6)
+            setattr(self, attr, entry)
 
-        ttk.Button(btn_frame, text="Adicionar", command=self.add_professor, style="Accent.TButton").pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Atualizar", command=self.update_professor, style="Accent.TButton").pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Deletar", command=self.delete_professor, style="Danger.TButton").pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Limpar Campos", command=self.clear_fields).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="ℹ️ Como adicionar", command=self.show_info, style="Accent.TButton").pack(side="left", padx=5)
+        # Buttons
+        btn_row = tk.Frame(form, bg=BG_CARD)
+        btn_row.pack(fill="x", padx=20, pady=(0, 18))
 
+        for txt, cmd, prim, dng in [
+            ("Adicionar",         self.add_professor,    True,  False),
+            ("Atualizar",         self.update_professor, True,  False),
+            ("Deletar",           self.delete_professor, False, True),
+            ("Limpar",            self.clear_fields,     False, False),
+            ("ℹ️ Como adicionar", self.show_info,        False, False),
+        ]:
+            _btn(btn_row, txt, cmd, primary=prim, danger=dng).pack(side="left", padx=(0, 8))
 
-        # Treeview para exibir professores
-        tree_container = RoundedFrame(self, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=12)
-        tree_container.pack(pady=10, padx=10, fill="both", expand=True)
-        self.tree = ttk.Treeview(tree_container.inner_frame, columns=("Nome", "Disciplinas", "Disponibilidade"), show="headings", selectmode="browse")
-        self.tree.heading("Nome", text="Nome")
-        self.tree.heading("Disciplinas", text="Disciplinas")
-        self.tree.heading("Disponibilidade", text="Disponibilidade")
-        self.tree.column("Nome", width=150)
-        self.tree.column("Disciplinas", width=200)
-        self.tree.column("Disponibilidade", width=250)
-        self.tree.pack(fill="both", expand=True)
-        self.tree.bind("<<TreeviewSelect>>", self.load_selected_professor)
+        # Table
+        sec_row = tk.Frame(self, bg=BG_PAGE)
+        sec_row.pack(fill="x", padx=PAD, pady=(22, 8))
+        tk.Label(sec_row, text="Lista de Professores", bg=BG_PAGE, fg=TEXT_DARK, font=(FONT, 11, "bold")).pack(side="left")
 
-        # A chamada para update_treeview() agora é feita dentro de load_professores(), que é chamado após create_widgets().
+        tree_card = _card(self)
+        tree_card.pack(fill="both", expand=True, padx=PAD, pady=(0, 24))
 
-    def update_treeview(self):
-        """Atualiza a exibição da Treeview com os dados atuais dos professores."""
-        for i in self.tree.get_children():
-            self.tree.delete(i)
-        for prof in self.professores:
-            self.tree.insert("", "end", values=(prof.nome, ", ".join(prof.disciplinas), ", ".join(prof.disponibilidade)))
+        self.tree = ttk.Treeview(
+            tree_card,
+            columns=("Nome", "Disciplinas", "Disponibilidade"),
+            show="headings", selectmode="browse",
+        )
+        for col, w in [("Nome", 160), ("Disciplinas", 220), ("Disponibilidade", 300)]:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=w)
+
+        self.tree.pack(side="left", fill="both", expand=True)
+        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+
+        vsb = ttk.Scrollbar(tree_card, orient="vertical", command=self.tree.yview)
+        vsb.pack(side="right", fill="y")
+        self.tree.config(yscrollcommand=vsb.set)
+
+    # ── Treeview ───────────────────────────────────────────────────────────────
+
+    def _refresh_tree(self):
+        self.tree.delete(*self.tree.get_children())
+        for p in self.professores:
+            self.tree.insert("", "end", values=(p.nome, ", ".join(p.disciplinas), ", ".join(p.disponibilidade)))
+
+    def _on_select(self, _event):
+        item = self.tree.focus()
+        if not item:
+            return
+        v = self.tree.item(item, "values")
+        for entry, val in zip(
+            [self.nome_entry, self.disciplinas_entry, self.disponibilidade_entry], v
+        ):
+            entry.delete(0, tk.END)
+            entry.insert(0, val)
+
+    # ── CRUD ───────────────────────────────────────────────────────────────────
 
     def add_professor(self):
-        """Adiciona um novo professor à lista e salva no CSV."""
-        nome = self.nome_entry.get().strip()
-        disciplinas_str = self.disciplinas_entry.get().strip()
-        disponibilidade_str = self.disponibilidade_entry.get().strip()
-
-        if not nome or not disciplinas_str or not disponibilidade_str:
-            messagebox.showwarning("Aviso", "Todos os campos são obrigatórios para adicionar um professor.")
+        nome  = self.nome_entry.get().strip()
+        disc  = self.disciplinas_entry.get().strip()
+        disp  = self.disponibilidade_entry.get().strip()
+        if not nome or not disc or not disp:
+            messagebox.showwarning("Aviso", "Todos os campos são obrigatórios.")
             return
-
-        disciplinas = [d.strip() for d in disciplinas_str.split(",") if d.strip()]
-        disponibilidade = [d.strip() for d in disponibilidade_str.split(",") if d.strip()]
-
         if any(p.nome == nome for p in self.professores):
-            messagebox.showwarning("Aviso", f"Professor com o nome \'{nome}\' já existe.")
+            messagebox.showwarning("Aviso", f"Professor '{nome}' já existe.")
             return
-
-        new_prof = Professor(nome, disciplinas, disponibilidade)
-        self.professores.append(new_prof)
-        self.save_professores()
-        self.update_treeview()
+        disciplinas    = [d.strip() for d in disc.split(",") if d.strip()]
+        disponibilidade = [d.strip() for d in disp.split(",") if d.strip()]
+        self.professores.append(Professor(nome, disciplinas, disponibilidade))
+        self._save()
+        self._refresh_tree()
         self.clear_fields()
-        messagebox.showinfo("Sucesso", f"Professor \'{nome}\' adicionado com sucesso.")
+        messagebox.showinfo("Sucesso", f"Professor '{nome}' adicionado.")
 
     def update_professor(self):
-        """Atualiza os dados de um professor existente e salva no CSV."""
-        selected_item = self.tree.focus()
-        if not selected_item:
+        item = self.tree.focus()
+        if not item:
             messagebox.showwarning("Aviso", "Selecione um professor para atualizar.")
             return
-
-        old_nome = self.tree.item(selected_item, "values")[0]
-        nome = self.nome_entry.get().strip()
-        disciplinas_str = self.disciplinas_entry.get().strip()
-        disponibilidade_str = self.disponibilidade_entry.get().strip()
-
-        if not nome or not disciplinas_str or not disponibilidade_str:
-            messagebox.showwarning("Aviso", "Todos os campos são obrigatórios para atualizar um professor.")
+        old_nome = self.tree.item(item, "values")[0]
+        nome  = self.nome_entry.get().strip()
+        disc  = self.disciplinas_entry.get().strip()
+        disp  = self.disponibilidade_entry.get().strip()
+        if not nome or not disc or not disp:
+            messagebox.showwarning("Aviso", "Todos os campos são obrigatórios.")
             return
-
-        disciplinas = [d.strip() for d in disciplinas_str.split(",") if d.strip()]
-        disponibilidade = [d.strip() for d in disponibilidade_str.split(",") if d.strip()]
-
-        for i, prof in enumerate(self.professores):
-            if prof.nome == old_nome:
-                # Verifica se o novo nome já existe para outro professor
-                if nome != old_nome and any(p.nome == nome for p in self.professores if p.nome != old_nome):
-                    messagebox.showwarning("Aviso", f"Professor com o nome \'{nome}\' já existe.")
-                    return
-                
-                self.professores[i].nome = nome
-                self.professores[i].disciplinas = disciplinas
-                self.professores[i].disponibilidade = disponibilidade
+        if nome != old_nome and any(p.nome == nome for p in self.professores):
+            messagebox.showwarning("Aviso", f"Professor '{nome}' já existe.")
+            return
+        disciplinas    = [d.strip() for d in disc.split(",") if d.strip()]
+        disponibilidade = [d.strip() for d in disp.split(",") if d.strip()]
+        for p in self.professores:
+            if p.nome == old_nome:
+                p.nome           = nome
+                p.disciplinas    = disciplinas
+                p.disponibilidade = disponibilidade
                 break
-        self.save_professores()
-        self.update_treeview()
+        self._save()
+        self._refresh_tree()
         self.clear_fields()
-        messagebox.showinfo("Sucesso", f"Professor \'{nome}\' atualizado com sucesso.")
+        messagebox.showinfo("Sucesso", f"Professor '{nome}' atualizado.")
 
     def delete_professor(self):
-        """Deleta um professor da lista e salva no CSV."""
-        selected_item = self.tree.focus()
-        if not selected_item:
+        item = self.tree.focus()
+        if not item:
             messagebox.showwarning("Aviso", "Selecione um professor para deletar.")
             return
-
-        nome_to_delete = self.tree.item(selected_item, "values")[0]
-        if messagebox.askyesno("Confirmar Deleção", f"Tem certeza que deseja deletar o professor \'{nome_to_delete}\'?"):
-            self.professores = [p for p in self.professores if p.nome != nome_to_delete]
-            self.save_professores()
-            self.update_treeview()
+        nome = self.tree.item(item, "values")[0]
+        if messagebox.askyesno("Confirmar", f"Deletar professor '{nome}'?"):
+            self.professores = [p for p in self.professores if p.nome != nome]
+            self._save()
+            self._refresh_tree()
             self.clear_fields()
-            messagebox.showinfo("Sucesso", f"Professor \'{nome_to_delete}\' deletado com sucesso.")
-
-    def load_selected_professor(self, event):
-        """Carrega os dados do professor selecionado na Treeview para os campos de entrada."""
-        selected_item = self.tree.focus()
-        if selected_item:
-            values = self.tree.item(selected_item, "values")
-            self.nome_entry.delete(0, tk.END)
-            self.nome_entry.insert(0, values[0])
-            self.disciplinas_entry.delete(0, tk.END)
-            self.disciplinas_entry.insert(0, values[1])
-            self.disponibilidade_entry.delete(0, tk.END)
-            self.disponibilidade_entry.insert(0, values[2])
 
     def clear_fields(self):
-        """Limpa todos os campos de entrada de dados."""
-        self.nome_entry.delete(0, tk.END)
-        self.disciplinas_entry.delete(0, tk.END)
-        self.disponibilidade_entry.delete(0, tk.END)
+        for e in [self.nome_entry, self.disciplinas_entry, self.disponibilidade_entry]:
+            e.delete(0, tk.END)
 
     def show_info(self):
-        msg = (
-            "Como adicionar um Professor:\n\n"
-            "• Nome: Digite o nome completo do professor.\n"
-            "• Disciplinas: Informe as disciplinas separadas por vírgula (ex: Matemática, Física).\n"
-            "• Disponibilidade: Informe os dias e blocos separados por vírgula (ex: Seg-Manhã, Ter-Noite, Qua-Tarde).\n"
-            "Certifique-se de não deixar espaços extras desnecessários nas listas."
-        )
-        messagebox.showinfo("Informação - Professores", msg)
+        messagebox.showinfo("Como adicionar Professores", (
+            "• Nome: nome completo do professor.\n"
+            "• Disciplinas: separadas por vírgula (ex: Matemática, Física).\n"
+            "• Disponibilidade: Dia-Bloco separados por vírgula\n"
+            "  (ex: Seg-Manhã, Ter-Noite, Qua-Tarde)."
+        ))

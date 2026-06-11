@@ -24,6 +24,17 @@ class Sala:
     numero: str  # Número ou identificador da sala.
     is_laboratorio: bool  # Booleano indicando se a sala é um laboratório (True) ou uma sala de aula comum (False).
 
+# Define a classe Falta, que representa a ausência registrada de um professor.
+@dataclass
+class Falta:
+    data: str           # "11/06/2024"
+    professor: str
+    dia_semana: str     # "Seg", "Ter", etc.
+    bloco: str          # "Manhã", "Tarde", "Noite"
+    horario: str        # "1" ou "—" se desconhecido
+    motivo: str
+    registrado_em: str  # "11/06/2024 14:30"
+
 # Define a classe Aula, que representa uma aula agendada.
 @dataclass
 class Aula:

@@ -1,276 +1,298 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import List
-from .models import Turma, Sala # Importa Sala também para obter a lista de salas
-from .data_handler import DataHandler
-from .rounded_frame import RoundedFrame
 import os
+
+from .models import Turma, Sala
+from .data_handler import DataHandler
+
+BG_PAGE    = "#F5F6FA"
+BG_CARD    = "#FFFFFF"
+ORANGE     = "#F97316"
+ORANGE_DIM = "#FFF7ED"
+TEXT_DARK  = "#111827"
+TEXT_MID   = "#6B7280"
+BORDER     = "#E5E7EB"
+RED        = "#DC2626"
+FONT       = "Segoe UI"
+
+
+def _card(parent, **kwargs):
+    f = tk.Frame(parent, bg=BG_CARD, **kwargs)
+    f.config(highlightbackground=BORDER, highlightthickness=1, highlightcolor=BORDER)
+    return f
+
+
+def _btn(parent, text, cmd, primary=False, danger=False):
+    if primary:
+        bg, fg, abg = ORANGE, "#FFFFFF", "#EA6C0A"
+    elif danger:
+        bg, fg, abg = RED, "#FFFFFF", "#B91C1C"
+    else:
+        bg, fg, abg = BG_PAGE, TEXT_DARK, BORDER
+    b = tk.Button(
+        parent, text=text, command=cmd,
+        bg=bg, fg=fg, activebackground=abg,
+        activeforeground="#FFFFFF" if (primary or danger) else TEXT_DARK,
+        font=(FONT, 10), relief="flat", bd=0,
+        padx=14, pady=7, cursor="hand2",
+    )
+    if not primary and not danger:
+        b.config(highlightbackground=BORDER, highlightthickness=1)
+    return b
+
+
+def _entry(parent, width=50):
+    return tk.Entry(
+        parent, font=(FONT, 10), bg=BG_PAGE, fg=TEXT_DARK,
+        relief="flat", bd=0, width=width,
+        highlightbackground=BORDER, highlightthickness=1,
+        insertbackground=TEXT_DARK,
+    )
+
 
 class TurmaManager(tk.Frame):
     def __init__(self, parent, controller):
-        super().__init__(parent, bg="#050608")
-        self.controller = controller # O controller é a instância de SchedulerApp
+        super().__init__(parent, bg=BG_PAGE)
+        self.controller = controller
         self.turmas: List[Turma] = []
-        self.file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "turmas.csv"))
-        self.create_widgets() # Primeiro, cria os widgets, incluindo self.tree e o Combobox
-        self.load_turmas() # Depois, carrega as turmas e atualiza a treeview
+        self.file_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "data", "turmas.csv")
+        )
+        self._build_ui()
+        self._load()
 
-    def load_turmas(self):
-        """Carrega as turmas do arquivo CSV."""
+    def _load(self):
         self.turmas = DataHandler.load_turmas(self.file_path)
-        self.update_treeview()
+        self._refresh_tree()
 
-    def save_turmas(self):
-        """Salva as turmas no arquivo CSV."""
+    def _save(self):
         DataHandler.save_turmas(self.file_path, self.turmas)
 
-    def create_widgets(self):
-        """Cria os widgets da interface para gerenciamento de turmas."""
-        # Cabeçalho do formulário
-        ttk.Label(self, text="Dados da Turma", style="CardHeader.TLabel").pack(pady=(10, 0), padx=10, anchor="w")
+    # ── UI ─────────────────────────────────────────────────────────────────────
 
-        # Frame de entrada de dados
-        input_frame = RoundedFrame(self, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
-        input_frame.pack(pady=10, padx=10, fill="x")
+    def _build_ui(self):
+        PAD = 28
 
-        ttk.Label(input_frame.inner_frame, text="Nome:").grid(row=0, column=0, sticky="w", pady=2)
-        self.nome_entry = ttk.Entry(input_frame.inner_frame, width=40)
-        self.nome_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+        # Header
+        hdr = tk.Frame(self, bg=BG_PAGE)
+        hdr.pack(fill="x", padx=PAD, pady=(26, 0))
+        tk.Label(hdr, text="Turmas", bg=BG_PAGE, fg=TEXT_DARK, font=(FONT, 22, "bold")).pack(anchor="w")
+        tk.Label(hdr, text="Gerencie o cadastro de turmas.", bg=BG_PAGE, fg=TEXT_MID, font=(FONT, 10)).pack(anchor="w", pady=(3, 0))
 
-        ttk.Label(input_frame.inner_frame, text="Carga Horária:").grid(row=1, column=0, sticky="w", pady=2)
-        self.carga_horaria_entry = ttk.Entry(input_frame.inner_frame, width=40)
-        self.carga_horaria_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
+        # Form card
+        form = _card(self)
+        form.pack(fill="x", padx=PAD, pady=(20, 0))
 
-        ttk.Label(input_frame.inner_frame, text="Disciplinas (separadas por vírgula):").grid(row=2, column=0, sticky="w", pady=2)
-        self.disciplinas_entry = ttk.Entry(input_frame.inner_frame, width=40)
-        self.disciplinas_entry.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
+        grid = tk.Frame(form, bg=BG_CARD)
+        grid.pack(fill="x", padx=20, pady=(18, 6))
+        grid.columnconfigure(1, weight=1)
 
-        ttk.Label(input_frame.inner_frame, text="Sala Preferencial:").grid(row=3, column=0, sticky="w", pady=2)
-        # Combobox para seleção da sala preferencial
-        self.sala_preferencial_combobox = ttk.Combobox(input_frame.inner_frame, width=38, state="readonly")
-        self.sala_preferencial_combobox.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
-        self.update_sala_options() # Carrega as opções de salas no Combobox
+        # Text entry fields
+        text_fields = [
+            ("Nome:",                                "nome_entry"),
+            ("Carga Horária (número inteiro):",      "carga_horaria_entry"),
+            ("Disciplinas (separadas por vírgula):", "disciplinas_entry"),
+        ]
+        for row_idx, (lbl, attr) in enumerate(text_fields):
+            tk.Label(grid, text=lbl, bg=BG_CARD, fg=TEXT_MID, font=(FONT, 9)).grid(
+                row=row_idx, column=0, sticky="w", pady=(0, 4),
+            )
+            entry = _entry(grid)
+            entry.grid(row=row_idx, column=1, sticky="ew", padx=(14, 0), pady=(0, 12), ipady=6)
+            setattr(self, attr, entry)
 
-        # Botões de ação
-        btn_frame = RoundedFrame(input_frame.inner_frame, bg_color="#111827", border_color="#1F2937", corner_radius=16, padding=10)
-        btn_frame.grid(row=4, column=0, columnspan=2, pady=10, sticky="ew")
+        # Sala preferencial combobox
+        tk.Label(grid, text="Sala Preferencial:", bg=BG_CARD, fg=TEXT_MID, font=(FONT, 9)).grid(
+            row=3, column=0, sticky="w", pady=(0, 4),
+        )
+        self.sala_preferencial_combobox = ttk.Combobox(grid, width=48, state="readonly", font=(FONT, 10))
+        self.sala_preferencial_combobox.grid(row=3, column=1, sticky="ew", padx=(14, 0), pady=(0, 12), ipady=4)
+        self.update_sala_options()
 
-        ttk.Button(btn_frame, text="Adicionar", command=self.add_turma, style="Accent.TButton").pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Atualizar", command=self.update_turma, style="Accent.TButton").pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Deletar", command=self.delete_turma, style="Danger.TButton").pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Limpar Campos", command=self.clear_fields).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="ℹ️ Como adicionar", command=self.show_info, style="Accent.TButton").pack(side="left", padx=5)
+        # Buttons
+        btn_row = tk.Frame(form, bg=BG_CARD)
+        btn_row.pack(fill="x", padx=20, pady=(0, 18))
 
+        for txt, cmd, prim, dng in [
+            ("Adicionar",         self.add_turma,    True,  False),
+            ("Atualizar",         self.update_turma, True,  False),
+            ("Deletar",           self.delete_turma, False, True),
+            ("Limpar",            self.clear_fields, False, False),
+            ("ℹ️ Como adicionar", self.show_info,    False, False),
+        ]:
+            _btn(btn_row, txt, cmd, primary=prim, danger=dng).pack(side="left", padx=(0, 8))
 
-        # Treeview para exibir turmas
-        tree_container = RoundedFrame(self, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=12)
-        tree_container.pack(pady=10, padx=10, fill="both", expand=True)
-        self.tree = ttk.Treeview(tree_container.inner_frame, columns=("Nome", "Carga Horária", "Disciplinas", "Sala Preferencial"), show="headings", selectmode="browse")
-        self.tree.heading("Nome", text="Nome")
-        self.tree.heading("Carga Horária", text="Carga Horária")
-        self.tree.heading("Disciplinas", text="Disciplinas")
-        self.tree.heading("Sala Preferencial", text="Sala Preferencial")
-        self.tree.column("Nome", width=100)
-        self.tree.column("Carga Horária", width=100)
-        self.tree.column("Disciplinas", width=200)
-        self.tree.column("Sala Preferencial", width=100)
-        self.tree.pack(fill="both", expand=True)
-        self.tree.bind("<<TreeviewSelect>>", self.load_selected_turma)
+        # Table
+        sec_row = tk.Frame(self, bg=BG_PAGE)
+        sec_row.pack(fill="x", padx=PAD, pady=(22, 8))
+        tk.Label(sec_row, text="Lista de Turmas", bg=BG_PAGE, fg=TEXT_DARK, font=(FONT, 11, "bold")).pack(side="left")
+
+        tree_card = _card(self)
+        tree_card.pack(fill="both", expand=True, padx=PAD, pady=(0, 24))
+
+        self.tree = ttk.Treeview(
+            tree_card,
+            columns=("Nome", "Carga Horária", "Disciplinas", "Sala Preferencial"),
+            show="headings", selectmode="browse",
+        )
+        for col, w in [("Nome", 120), ("Carga Horária", 100), ("Disciplinas", 220), ("Sala Preferencial", 120)]:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=w)
+
+        self.tree.pack(side="left", fill="both", expand=True)
+        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+
+        vsb = ttk.Scrollbar(tree_card, orient="vertical", command=self.tree.yview)
+        vsb.pack(side="right", fill="y")
+        self.tree.config(yscrollcommand=vsb.set)
+
+    # ── Sala options ───────────────────────────────────────────────────────────
 
     def update_sala_options(self):
-        """Atualiza as opções do Combobox de salas com as salas atualmente cadastradas."""
-        # Acessa o SalaManager através do controller para obter a lista de salas.
-        salas: List[Sala] = self.controller.sala_manager.salas
-        sala_numeros = [s.numero for s in salas]
-        self.sala_preferencial_combobox["values"] = sala_numeros
-        if sala_numeros: # Seleciona a primeira sala por padrão se houver.
-            self.sala_preferencial_combobox.set(sala_numeros[0])
-        else:
-            self.sala_preferencial_combobox.set("") # Limpa se não houver salas.
+        salas: List[Sala] = self.controller.sala_manager.salas if hasattr(self.controller, "sala_manager") else []
+        nums = [s.numero for s in salas]
+        self.sala_preferencial_combobox["values"] = nums
+        self.sala_preferencial_combobox.set(nums[0] if nums else "")
 
-    def update_treeview(self):
-        """Atualiza a exibição da Treeview com os dados atuais das turmas."""
-        for i in self.tree.get_children():
-            self.tree.delete(i)
-        for turma in self.turmas:
-            self.tree.insert("", "end", values=(turma.nome, turma.carga_horaria, ", ".join(turma.disciplinas), turma.sala_preferencial))
+    # ── Treeview ───────────────────────────────────────────────────────────────
+
+    def _refresh_tree(self):
+        self.tree.delete(*self.tree.get_children())
+        for t in self.turmas:
+            self.tree.insert("", "end", values=(
+                t.nome, t.carga_horaria, ", ".join(t.disciplinas), t.sala_preferencial,
+            ))
+
+    def _on_select(self, _event):
+        item = self.tree.focus()
+        if not item:
+            return
+        v = self.tree.item(item, "values")
+        for entry, val in zip(
+            [self.nome_entry, self.carga_horaria_entry, self.disciplinas_entry], v[:3]
+        ):
+            entry.delete(0, tk.END)
+            entry.insert(0, val)
+        self.sala_preferencial_combobox.set(v[3])
+
+    # ── CRUD ───────────────────────────────────────────────────────────────────
 
     def add_turma(self):
-        """Adiciona uma nova turma à lista e salva no CSV."""
-        nome = self.nome_entry.get().strip()
-        carga_horaria_str = self.carga_horaria_entry.get().strip()
-        disciplinas_str = self.disciplinas_entry.get().strip()
-        sala_preferencial = self.sala_preferencial_combobox.get().strip() # Pega o valor do Combobox
+        nome      = self.nome_entry.get().strip()
+        ch_str    = self.carga_horaria_entry.get().strip()
+        disc_str  = self.disciplinas_entry.get().strip()
+        sala_pref = self.sala_preferencial_combobox.get().strip()
 
-        if not nome or not carga_horaria_str or not disciplinas_str or not sala_preferencial:
-            messagebox.showwarning("Aviso", "Todos os campos são obrigatórios para adicionar uma turma.")
+        if not nome or not ch_str or not disc_str or not sala_pref:
+            messagebox.showwarning("Aviso", "Todos os campos são obrigatórios.")
             return
-
         try:
-            carga_horaria = int(carga_horaria_str)
+            carga_horaria = int(ch_str)
         except ValueError:
             messagebox.showwarning("Aviso", "Carga Horária deve ser um número inteiro.")
             return
-
-        # Normaliza as disciplinas para comparação (ordenadas e sem espaços extras)
-        disciplinas = sorted([d.strip() for d in disciplinas_str.split(",") if d.strip()])
-
         if any(t.nome == nome for t in self.turmas):
-            messagebox.showwarning("Aviso", f"Turma com o nome \'{nome}\' já existe.")
+            messagebox.showwarning("Aviso", f"Turma '{nome}' já existe.")
             return
-        
-        # Validação da sala preferencial
-        if sala_preferencial not in self.sala_preferencial_combobox["values"]:
-            messagebox.showwarning("Aviso", f"A sala preferencial \'{sala_preferencial}\' não existe. Por favor, selecione uma sala válida.")
+        if sala_pref not in self.sala_preferencial_combobox["values"]:
+            messagebox.showwarning("Aviso", f"Sala '{sala_pref}' não existe.")
             return
 
-        # NOVA VALIDAÇÃO: Regra de compartilhamento de sala
-        # Permite até 2 turmas por sala, desde que tenham as mesmas disciplinas.
-        turmas_na_sala = [t for t in self.turmas if t.sala_preferencial == sala_preferencial]
-        
+        disciplinas = sorted([d.strip() for d in disc_str.split(",") if d.strip()])
+        turmas_na_sala = [t for t in self.turmas if t.sala_preferencial == sala_pref]
         if len(turmas_na_sala) >= 2:
-            messagebox.showwarning("Aviso", "Sala já atingiu o limite de 2 turmas. Por gentileza escolha uma sala diferente.")
+            messagebox.showwarning("Aviso", "Sala já atingiu o limite de 2 turmas.")
             return
-        
-        if len(turmas_na_sala) == 1:
-            # Compara a lista de disciplinas da turma que já está na sala com a nova turma
-            if sorted(turmas_na_sala[0].disciplinas) != disciplinas:
-                messagebox.showwarning("Aviso", "Sala já ocupada por turma com disciplinas diferentes. Por gentileza escolha uma sala diferente ou ajuste as disciplinas.")
-                return
+        if len(turmas_na_sala) == 1 and sorted(turmas_na_sala[0].disciplinas) != disciplinas:
+            messagebox.showwarning("Aviso", "Sala ocupada por turma com disciplinas diferentes.")
+            return
 
-        new_turma = Turma(nome, carga_horaria, disciplinas, sala_preferencial)
-        self.turmas.append(new_turma)
-        self.save_turmas()
-        self.update_treeview()
+        self.turmas.append(Turma(nome, carga_horaria, disciplinas, sala_pref))
+        self._save()
+        self._refresh_tree()
         self.clear_fields()
-        messagebox.showinfo("Sucesso", f"Turma \'{nome}\' adicionada com sucesso.")
+        messagebox.showinfo("Sucesso", f"Turma '{nome}' adicionada.")
 
     def update_turma(self):
-        """Atualiza os dados de uma turma existente e salva no CSV."""
-        selected_item = self.tree.focus()
-        if not selected_item:
+        item = self.tree.focus()
+        if not item:
             messagebox.showwarning("Aviso", "Selecione uma turma para atualizar.")
             return
+        old_nome  = self.tree.item(item, "values")[0]
+        nome      = self.nome_entry.get().strip()
+        ch_str    = self.carga_horaria_entry.get().strip()
+        disc_str  = self.disciplinas_entry.get().strip()
+        sala_pref = self.sala_preferencial_combobox.get().strip()
 
-        old_nome = self.tree.item(selected_item, "values")[0]
-        nome = self.nome_entry.get().strip()
-        carga_horaria_str = self.carga_horaria_entry.get().strip()
-        disciplinas_str = self.disciplinas_entry.get().strip()
-        sala_preferencial = self.sala_preferencial_combobox.get().strip()
-
-        if not nome or not carga_horaria_str or not disciplinas_str or not sala_preferencial:
-            messagebox.showwarning("Aviso", "Todos os campos são obrigatórios para atualizar uma turma.")
+        if not nome or not ch_str or not disc_str or not sala_pref:
+            messagebox.showwarning("Aviso", "Todos os campos são obrigatórios.")
             return
-
         try:
-            carga_horaria = int(carga_horaria_str)
+            carga_horaria = int(ch_str)
         except ValueError:
             messagebox.showwarning("Aviso", "Carga Horária deve ser um número inteiro.")
             return
-
-        disciplines = sorted([d.strip() for d in disciplinas_str.split(",") if d.strip()])
-
-        # Encontra a turma original que está sendo atualizada
-        original_turma = next((t for t in self.turmas if t.nome == old_nome), None)
-        if not original_turma:
-            messagebox.showwarning("Erro", "Turma original não encontrada para atualização.")
+        if nome != old_nome and any(t.nome == nome for t in self.turmas):
+            messagebox.showwarning("Aviso", f"Turma '{nome}' já existe.")
+            return
+        if sala_pref not in self.sala_preferencial_combobox["values"]:
+            messagebox.showwarning("Aviso", f"Sala '{sala_pref}' não existe.")
             return
 
-        # Validação de nome duplicado (se o nome for alterado)
-        if nome != old_nome and any(t.nome == nome for t in self.turmas if t.nome != old_nome):
-            messagebox.showwarning("Aviso", f"Turma com o nome \'{nome}\' já existe.")
-            return
-        
-        # Validação da sala preferencial
-        if sala_preferencial not in self.sala_preferencial_combobox["values"]:
-            messagebox.showwarning("Aviso", f"A sala preferencial \'{sala_preferencial}\' não existe. Por favor, selecione uma sala válida.")
+        original = next((t for t in self.turmas if t.nome == old_nome), None)
+        if not original:
             return
 
-        # Regra de compartilhamento de sala (ao atualizar)
-        # Exclui a turma que está sendo atualizada da lista de turmas na sala para evitar auto-conflito
-        turmas_na_sala_sem_atual = [t for t in self.turmas if t.sala_preferencial == sala_preferencial and t.nome != old_nome]
-        
-        # A validação de ocupação da sala só deve ser aplicada se:
-        # 1. A sala preferencial mudou
-        # OU
-        # 2. A sala preferencial não mudou, mas as disciplinas mudaram E a sala já tem outras turmas.
-        
-        # Cenário 1: A sala preferencial mudou
-        if sala_preferencial != original_turma.sala_preferencial:
-            if len(turmas_na_sala_sem_atual) >= 2:
-                messagebox.showwarning("Aviso", "Sala já atingiu o limite de 2 turmas. Por gentileza escolha uma sala diferente.")
+        disciplinas = sorted([d.strip() for d in disc_str.split(",") if d.strip()])
+        sem_atual = [t for t in self.turmas if t.sala_preferencial == sala_pref and t.nome != old_nome]
+
+        if sala_pref != original.sala_preferencial:
+            if len(sem_atual) >= 2:
+                messagebox.showwarning("Aviso", "Sala já atingiu o limite de 2 turmas.")
                 return
-            
-            if len(turmas_na_sala_sem_atual) == 1:
-                if sorted(turmas_na_sala_sem_atual[0].disciplinas) != disciplines:
-                    messagebox.showwarning("Aviso", "Sala já ocupada por turma com disciplinas diferentes. Por gentileza escolha uma sala diferente ou ajuste as disciplinas.")
-                    return
-        # Cenário 2: A sala preferencial não mudou, mas as disciplinas mudaram E há outras turmas na sala
-        elif disciplines != sorted(original_turma.disciplinas) and len(turmas_na_sala_sem_atual) > 0:
-            if len(turmas_na_sala_sem_atual) >= 2:
-                messagebox.showwarning("Aviso", "Sala já atingiu o limite de 2 turmas. Por gentileza escolha uma sala diferente.")
+            if len(sem_atual) == 1 and sorted(sem_atual[0].disciplinas) != disciplinas:
+                messagebox.showwarning("Aviso", "Sala ocupada por turma com disciplinas diferentes.")
                 return
-            
-            if len(turmas_na_sala_sem_atual) == 1:
-                if sorted(turmas_na_sala_sem_atual[0].disciplinas) != disciplines:
-                    messagebox.showwarning("Aviso", "Sala já ocupada por turma com disciplinas diferentes. Por gentileza escolha uma sala diferente ou ajuste as disciplinas.")
-                    return
+        elif disciplinas != sorted(original.disciplinas) and sem_atual:
+            if len(sem_atual) >= 2:
+                messagebox.showwarning("Aviso", "Sala já atingiu o limite de 2 turmas.")
+                return
+            if sorted(sem_atual[0].disciplinas) != disciplinas:
+                messagebox.showwarning("Aviso", "Sala ocupada por turma com disciplinas diferentes.")
+                return
 
-        # Se passou pelas validações, atualiza a turma
-        for i, turma in enumerate(self.turmas):
-            if turma.nome == old_nome:
-                self.turmas[i].nome = nome
-                self.turmas[i].carga_horaria = carga_horaria
-                self.turmas[i].disciplinas = disciplines
-                self.turmas[i].sala_preferencial = sala_preferencial
-                break
-        self.save_turmas()
-        self.update_treeview()
+        original.nome            = nome
+        original.carga_horaria   = carga_horaria
+        original.disciplinas     = disciplinas
+        original.sala_preferencial = sala_pref
+        self._save()
+        self._refresh_tree()
         self.clear_fields()
-        messagebox.showinfo("Sucesso", f"Turma \'{nome}\' atualizada com sucesso.")
+        messagebox.showinfo("Sucesso", f"Turma '{nome}' atualizada.")
 
     def delete_turma(self):
-        """Deleta uma turma da lista e salva no CSV."""
-        selected_item = self.tree.focus()
-        if not selected_item:
+        item = self.tree.focus()
+        if not item:
             messagebox.showwarning("Aviso", "Selecione uma turma para deletar.")
             return
-
-        nome_to_delete = self.tree.item(selected_item, "values")[0]
-        if messagebox.askyesno("Confirmar Deleção", f"Tem certeza que deseja deletar a turma \'{nome_to_delete}\'?"):
-            self.turmas = [t for t in self.turmas if t.nome != nome_to_delete]
-            self.save_turmas()
-            self.update_treeview()
+        nome = self.tree.item(item, "values")[0]
+        if messagebox.askyesno("Confirmar", f"Deletar turma '{nome}'?"):
+            self.turmas = [t for t in self.turmas if t.nome != nome]
+            self._save()
+            self._refresh_tree()
             self.clear_fields()
-            messagebox.showinfo("Sucesso", f"Turma \'{nome_to_delete}\' deletada com sucesso.")
-
-    def load_selected_turma(self, event):
-        """Carrega os dados da turma selecionada na Treeview para os campos de entrada."""
-        selected_item = self.tree.focus()
-        if selected_item:
-            values = self.tree.item(selected_item, "values")
-            self.nome_entry.delete(0, tk.END)
-            self.nome_entry.insert(0, values[0])
-            self.carga_horaria_entry.delete(0, tk.END)
-            self.carga_horaria_entry.insert(0, values[1])
-            self.disciplinas_entry.delete(0, tk.END)
-            self.disciplinas_entry.insert(0, values[2])
-            self.sala_preferencial_combobox.set(values[3]) # Define o valor do Combobox
 
     def clear_fields(self):
-        """Limpa todos os campos de entrada de dados."""
-        self.nome_entry.delete(0, tk.END)
-        self.carga_horaria_entry.delete(0, tk.END)
-        self.disciplinas_entry.delete(0, tk.END)
-        self.sala_preferencial_combobox.set("") # Limpa o Combobox
+        for e in [self.nome_entry, self.carga_horaria_entry, self.disciplinas_entry]:
+            e.delete(0, tk.END)
+        self.sala_preferencial_combobox.set("")
 
     def show_info(self):
-        msg = (
-            "Como adicionar uma Turma:\n\n"
-            "• Nome: Digite o nome da turma (ex: 1º Ano A).\n"
-            "• Carga Horária: Informe um número inteiro representando o total de aulas.\n"
-            "• Disciplinas: Informe as disciplinas separadas por vírgula (ex: Matemática, Física).\n"
-            "• Sala Preferencial: Selecione a sala onde a turma terá a maioria das aulas.\n\n"
-            "Nota: Uma sala suporta no máximo 2 turmas desde que tenham as mesmas disciplinas."
-        )
-        messagebox.showinfo("Informação - Turmas", msg)
+        messagebox.showinfo("Como adicionar Turmas", (
+            "• Nome: nome da turma (ex: 1º Ano A).\n"
+            "• Carga Horária: número inteiro de aulas totais.\n"
+            "• Disciplinas: separadas por vírgula (ex: Matemática, Física).\n"
+            "• Sala Preferencial: sala onde a turma terá a maioria das aulas.\n\n"
+            "Uma sala suporta no máximo 2 turmas com as mesmas disciplinas."
+        ))

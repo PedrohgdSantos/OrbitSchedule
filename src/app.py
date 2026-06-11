@@ -1,370 +1,463 @@
-import math
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-import os
 from typing import List
 
-from .rounded_frame import RoundedFrame
-# Importa as classes e funções necessárias dos outros módulos do projeto.
 from .data_handler import DataHandler
 from .scheduler import Scheduler
 from .professor_manager import ProfessorManager
 from .turma_manager import TurmaManager
 from .sala_manager import SalaManager
-from .models import Aula # Importa Aula para tipagem da grade
+from .absence_manager import AbsenceManager
+from .models import Aula
 
-# Define a classe principal da aplicação GUI.
+# ── Design tokens ──────────────────────────────────────────────────────────────
+BG_PAGE     = "#F5F6FA"
+BG_SIDEBAR  = "#FFFFFF"
+BG_CARD     = "#FFFFFF"
+ORANGE      = "#F97316"
+ORANGE_DIM  = "#FFF7ED"
+TEXT_DARK   = "#111827"
+TEXT_MID    = "#6B7280"
+TEXT_LIGHT  = "#9CA3AF"
+BORDER      = "#E5E7EB"
+GREEN       = "#16A34A"
+GREEN_BG    = "#DCFCE7"
+BLUE        = "#2563EB"
+BLUE_BG     = "#DBEAFE"
+RED         = "#DC2626"
+RED_BG      = "#FEE2E2"
+FONT        = "Segoe UI"
+
+
+def _card(parent, **kwargs):
+    f = tk.Frame(parent, bg=BG_CARD, **kwargs)
+    f.config(highlightbackground=BORDER, highlightthickness=1, highlightcolor=BORDER)
+    return f
+
+
+def _btn(parent, text, cmd, primary=False, danger=False, small=False):
+    if primary:
+        bg, fg, abg, afg = ORANGE, "#FFFFFF", "#EA6C0A", "#FFFFFF"
+    elif danger:
+        bg, fg, abg, afg = RED, "#FFFFFF", "#B91C1C", "#FFFFFF"
+    else:
+        bg, fg, abg, afg = BG_CARD, TEXT_DARK, BG_PAGE, TEXT_DARK
+    px = 12 if small else 18
+    py = 5 if small else 8
+    b = tk.Button(
+        parent, text=text, command=cmd,
+        bg=bg, fg=fg, activebackground=abg, activeforeground=afg,
+        font=(FONT, 9 if small else 10), relief="flat", bd=0,
+        padx=px, pady=py, cursor="hand2",
+    )
+    b.config(highlightbackground=BORDER, highlightthickness=1)
+    return b
+
+
 class SchedulerApp:
     def __init__(self, root):
-        """Inicializa a aplicação Tkinter."""
-        self.root = root  # A janela principal da aplicação.
-        self.root.title("Organizador de Horários")  # Define o título da janela.
-        self.root.geometry("900x700")  # Define o tamanho inicial da janela.
-        self.root.configure(bg="#050608")
+        self.root = root
+        self.root.title("OrbitSchedule")
+        self.root.geometry("1180x720")
+        self.root.configure(bg=BG_PAGE)
+        self.root.minsize(960, 600)
 
-        self.style = ttk.Style()
-        self.configure_style()
+        self._configure_ttk_styles()
+        self.grade_gerada: List[Aula] = []
 
-        self.notebook = ttk.Notebook(self.root, style="App.TNotebook") # Cria um widget de notebook (abas).
-        self.notebook.pack(expand=True, fill="both", padx=10, pady=(10, 5))
-
-        self.grade_gerada: List[Aula] = [] # Armazena a última grade gerada.
-
-        self.create_main_tab() # Cria a aba principal para geração de grade.
-        self.create_professor_tab() # Cria a aba para gerenciamento de professores.
-        self.create_sala_tab() # Cria a aba para gerenciamento de salas (precisa ser antes de turma para o combobox).
-        self.create_turma_tab() # Cria a aba para gerenciamento de turmas.
-
+        self._build_shell()
+        self._build_sidebar()
+        self._build_pages()
         self.update_dashboard_summary()
+        self._navigate("dashboard")
 
-        self.status_var = tk.StringVar(value="Pronto para gerar a grade.")
-        self.status_separator = ttk.Separator(self.root, orient="horizontal")
-        self.status_separator.pack(fill="x", padx=10, pady=(0, 0))
-        self.status_label = ttk.Label(self.root, textvariable=self.status_var, anchor="w", style="Status.TLabel")
-        self.status_label.pack(fill="x", padx=10, pady=(4, 10))
-        self.start_ui_animation()
+    # ── TTK global styles ──────────────────────────────────────────────────────
 
-    def configure_style(self):
-        """Configura o tema e os estilos globais da aplicação."""
-        self.style.theme_use("clam")
-        self.style.configure(".", background="#0F172A", foreground="#E2E8F0", font=("Segoe UI", 10))
-        self.style.configure("TFrame", background="#0F172A")
-        self.style.configure("App.TFrame", background="#0F172A")
-        self.style.configure("Rounded.TFrame", background="#111827", borderwidth=0, relief="flat")
-        self.style.configure("Card.TFrame", background="#111827", borderwidth=1, relief="flat")
-        self.style.configure("CardAccent.TFrame", background="#1D4ED8", borderwidth=0, relief="flat")
-        self.style.configure("TLabelframe", background="#111827", borderwidth=0)
-        self.style.configure("TLabelframe.Label", background="#111827", foreground="#E2E8F0")
-        self.style.configure("CardHeader.TLabel", background="#111827", foreground="#94A3B8", font=("Segoe UI", 10, "bold"))
-        self.style.configure("CardMetric.TLabel", background="#111827", foreground="#F8FAFC", font=("Segoe UI", 18, "bold"))
-        self.style.configure("Header.TLabel", font=("Segoe UI", 24, "bold"), background="#0F172A", foreground="#F8FAFC")
-        self.style.configure("Subheader.TLabel", font=("Segoe UI", 10), background="#0F172A", foreground="#94A3B8")
-        self.style.configure("Info.TLabel", background="#0F172A", foreground="#CBD5E1", font=("Segoe UI", 10))
-        self.style.configure("Status.TLabel", background="#020617", foreground="#94A3B8", padding=(10, 6), font=("Segoe UI", 9))
-        self.style.configure("Accent.TButton", background="#22C55E", foreground="#0F172A", font=("Segoe UI", 10, "bold"), padding=10, borderwidth=0)
-        self.style.map("Accent.TButton", background=[("active", "#16A34A"), ("disabled", "#84CC16")], foreground=[("active", "#F8FAFC")])
-        self.style.configure("Secondary.TButton", background="#2563EB", foreground="#FFFFFF", font=("Segoe UI", 10), padding=10, borderwidth=0)
-        self.style.map("Secondary.TButton", background=[("active", "#1D4ED8")], foreground=[("active", "#FFFFFF")])
-        self.style.configure("Danger.TButton", background="#EF4444", foreground="#FFFFFF", padding=10, borderwidth=0)
-        self.style.map("Danger.TButton", background=[("active", "#DC2626")])
-        self.style.configure("Card.TLabelframe", background="#111827", bordercolor="#1F2937", borderwidth=1, relief="flat")
-        self.style.configure("Card.TLabelframe.Label", background="#111827", foreground="#E2E8F0", font=("Segoe UI", 11, "bold"))
-        self.style.configure("Treeview", background="#111827", fieldbackground="#111827", foreground="#E2E8F0", rowheight=28, font=("Segoe UI", 10))
-        self.style.configure("Treeview.Heading", background="#1F2937", foreground="#E2E8F0", font=("Segoe UI", 10, "bold"))
-        self.style.map("Treeview", background=[("selected", "#2563EB")], foreground=[("selected", "#FFFFFF")])
-        self.style.configure("App.TNotebook", background="#0F172A", borderwidth=0)
-        self.style.configure("TNotebook", background="#0F172A", borderwidth=0)
-        self.style.configure("TNotebook.Tab", padding=[14, 12], font=("Segoe UI", 10, "bold"), background="#111827", foreground="#CBD5E1")
-        self.style.map("TNotebook.Tab", background=[("selected", "#2563EB")], foreground=[("selected", "#FFFFFF")])
-        self.style.configure("TButton", padding=8, relief="flat")
-        self.style.configure("TLabel", background="#0F172A", foreground="#E2E8F0")
-        self.style.configure("TEntry", fieldbackground="#111827", background="#111827", foreground="#E2E8F0", insertcolor="#F8FAFC", padding=8)
-        self.style.configure("TCombobox", fieldbackground="#111827", background="#111827", foreground="#E2E8F0")
-        self.style.configure("TCheckbutton", background="#0F172A", foreground="#E2E8F0")
+    def _configure_ttk_styles(self):
+        s = ttk.Style()
+        s.theme_use("clam")
+        s.configure(".", background=BG_PAGE, foreground=TEXT_DARK, font=(FONT, 10))
+        s.configure("TFrame", background=BG_PAGE)
+        s.configure("TLabel", background=BG_PAGE, foreground=TEXT_DARK)
+        s.configure("TEntry",
+            fieldbackground=BG_CARD, background=BG_CARD,
+            foreground=TEXT_DARK, insertcolor=TEXT_DARK,
+            padding=8, relief="flat", borderwidth=1,
+        )
+        s.configure("TCombobox",
+            fieldbackground=BG_CARD, background=BG_CARD,
+            foreground=TEXT_DARK, padding=8,
+        )
+        s.configure("Treeview",
+            background=BG_CARD, fieldbackground=BG_CARD,
+            foreground=TEXT_DARK, rowheight=36,
+            font=(FONT, 10), borderwidth=0,
+        )
+        s.configure("Treeview.Heading",
+            background=BG_PAGE, foreground=TEXT_MID,
+            font=(FONT, 9, "bold"), relief="flat", borderwidth=0,
+        )
+        s.map("Treeview",
+            background=[("selected", ORANGE_DIM)],
+            foreground=[("selected", ORANGE)],
+        )
+        s.configure("TSeparator", background=BORDER)
+        s.configure("TScrollbar",
+            background=BORDER, troughcolor=BG_PAGE,
+            borderwidth=0, arrowsize=12,
+        )
+        s.configure("TCheckbutton", background=BG_CARD, foreground=TEXT_DARK)
 
-    def _on_canvas_configure(self, event, canvas, scrollable_frame_id):
-        """Atualiza a largura da janela do scrollable_frame para corresponder à largura do canvas."""
-        canvas.itemconfig(scrollable_frame_id, width=event.width)
+    # ── Shell layout ───────────────────────────────────────────────────────────
 
-    def create_main_tab(self):
-        """Cria a aba principal para a geração e visualização da grade horária."""
-        main_frame = ttk.Frame(self.notebook, style="App.TFrame")
-        self.notebook.add(main_frame, text="Gerar Grade Horária")
+    def _build_shell(self):
+        self.sidebar_frame = tk.Frame(self.root, bg=BG_SIDEBAR, width=220)
+        self.sidebar_frame.pack(side="left", fill="y")
+        self.sidebar_frame.pack_propagate(False)
 
-        # Cria um canvas com uma barra de rolagem
-        canvas = tk.Canvas(main_frame, bg="#0F172A", highlightthickness=0)
-        canvas.pack(side="left", fill="both", expand=True)
+        tk.Frame(self.root, bg=BORDER, width=1).pack(side="left", fill="y")
 
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scrollbar.pack(side="right", fill="y")
+        right = tk.Frame(self.root, bg=BG_PAGE)
+        right.pack(side="left", fill="both", expand=True)
 
-        canvas.configure(yscrollcommand=scrollbar.set)
+        # Status bar at bottom of right panel
+        self.status_var = tk.StringVar(value="Pronto.")
+        status_bar = tk.Frame(right, bg=BG_SIDEBAR)
+        status_bar.pack(side="bottom", fill="x")
+        tk.Frame(status_bar, bg=BORDER, height=1).pack(fill="x")
+        tk.Label(
+            status_bar, textvariable=self.status_var,
+            bg=BG_SIDEBAR, fg=TEXT_LIGHT,
+            font=(FONT, 9), anchor="w", padx=20,
+        ).pack(fill="x", pady=6)
 
-        scrollable_frame = ttk.Frame(canvas, style="App.TFrame")
+        self.content_area = right
 
-        # Store the ID of the window created for the scrollable_frame
-        scrollable_frame_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    # ── Sidebar ────────────────────────────────────────────────────────────────
 
-        # Bind _on_canvas_configure to the canvas's Configure event to handle horizontal resizing
-        canvas.bind("<Configure>", lambda event: self._on_canvas_configure(event, canvas, scrollable_frame_id))
+    def _build_sidebar(self):
+        # Logo
+        logo_row = tk.Frame(self.sidebar_frame, bg=BG_SIDEBAR, height=68)
+        logo_row.pack(fill="x")
+        logo_row.pack_propagate(False)
 
-        def on_frame_configure(event):
-            """Atualiza a região de rolagem do canvas."""
-            canvas.configure(scrollregion=canvas.bbox("all"))
-            
-        scrollable_frame.bind("<Configure>", on_frame_configure)
+        logo_box = tk.Frame(logo_row, bg=ORANGE, width=34, height=34)
+        logo_box.place(x=18, y=17)
+        tk.Label(logo_box, text="O", bg=ORANGE, fg="#FFFFFF", font=(FONT, 13, "bold")).place(relx=0.5, rely=0.5, anchor="center")
+        tk.Label(logo_row, text="OrbitSchedule", bg=BG_SIDEBAR, fg=TEXT_DARK, font=(FONT, 11, "bold")).place(x=60, y=24)
 
-        # Cabeçalho da aplicação.
-        header = ttk.Label(scrollable_frame, text="Gerador de Grade Horária Acadêmica", style="Header.TLabel")
-        header.pack(pady=(16, 2), padx=10, anchor="w")
-        subheader = ttk.Label(scrollable_frame, text="Organize horários com visual moderno e intuitivo.", style="Subheader.TLabel")
-        subheader.pack(padx=10, anchor="w")
+        tk.Frame(self.sidebar_frame, bg=BORDER, height=1).pack(fill="x")
 
-        # Painel de métricas rápidas.
-        stats_frame = ttk.Frame(scrollable_frame, style="App.TFrame")
-        stats_frame.pack(fill="x", padx=10, pady=(14, 10))
-
-        self.dashboard_labels = {}
-        self.stats_cards = []
-        stats = [
-            ("Professores", "0"),
-            ("Turmas", "0"),
-            ("Salas", "0"),
-            ("Aulas geradas", "0"),
+        # Nav items: (key, icon, label)
+        nav_items = [
+            ("dashboard",   "⊞",  "Dashboard"),
+            ("professores", "👤", "Professores"),
+            ("turmas",      "🎓", "Turmas"),
+            ("salas",       "🏫", "Salas"),
+            ("faltas",      "📋", "Faltas"),
         ]
-        for title, value in stats:
-            card = RoundedFrame(stats_frame, bg_color="#111827", border_color="#4F46E5", corner_radius=12, padding=10, height=80)
-            card.pack(side="left", expand=True, fill="both", padx=5)
-            self.stats_cards.append(card)
-            ttk.Label(card.inner_frame, text=title, style="CardHeader.TLabel").pack(anchor="w")
-            label_value = ttk.Label(card.inner_frame, text=value, style="CardMetric.TLabel")
-            label_value.pack(anchor="w", pady=(2, 0))
-            self.dashboard_labels[title] = label_value
 
-        # Frame para botões de ação da grade.
-        self.action_frame = RoundedFrame(scrollable_frame, bg_color="#111827", border_color="#1F2937", corner_radius=12, padding=10, height=60)
-        self.action_frame.pack(padx=10, pady=10, fill="x")
+        self._nav_btns: dict = {}
+        nav_wrap = tk.Frame(self.sidebar_frame, bg=BG_SIDEBAR)
+        nav_wrap.pack(fill="x", pady=(10, 0))
 
-        ttk.Button(self.action_frame.inner_frame, text="Gerar Grade", command=self.gerar_grade, style="Accent.TButton").pack(side="left", padx=6)
-        ttk.Button(self.action_frame.inner_frame, text="Exportar Grade CSV", command=self.exportar_grade, style="Secondary.TButton").pack(side="left", padx=6)
-        ttk.Button(self.action_frame.inner_frame, text="Zerar Aulas", command=self.clear_grade, style="Secondary.TButton").pack(side="left", padx=6)
-        ttk.Button(self.action_frame.inner_frame, text="ℹ️ Como usar", command=self.show_info_main, style="Secondary.TButton").pack(side="left", padx=6)
+        for key, icon, label in nav_items:
+            row = tk.Frame(nav_wrap, bg=BG_SIDEBAR, cursor="hand2")
+            row.pack(fill="x", padx=10, pady=2)
 
-        self.grade_summary_label = ttk.Label(scrollable_frame, text="Nenhuma grade gerada ainda.", style="Info.TLabel")
-        self.grade_summary_label.pack(padx=10, pady=(4, 0), anchor="w")
+            icon_lbl = tk.Label(row, text=icon, bg=BG_SIDEBAR, fg=TEXT_MID, font=(FONT, 13), width=3)
+            icon_lbl.pack(side="left", padx=(6, 0), pady=10)
 
-        # Área para exibir alertas e status.
-        ttk.Label(scrollable_frame, text="Alertas e Status", style="CardHeader.TLabel").pack(padx=10, pady=(14, 4), anchor="w")
-        self.alert_container = RoundedFrame(scrollable_frame, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
-        self.alert_container.pack(pady=0, padx=10, fill="x")
-        self.alert_text = tk.Text(self.alert_container.inner_frame, height=5, font=("Consolas", 10), relief="flat", bg="#111827", fg="#E2E8F0", bd=0)
+            text_lbl = tk.Label(row, text=label, bg=BG_SIDEBAR, fg=TEXT_MID, font=(FONT, 10), anchor="w")
+            text_lbl.pack(side="left", padx=4, pady=10, fill="x", expand=True)
+
+            for w in (row, icon_lbl, text_lbl):
+                w.bind("<Button-1>", lambda e, k=key: self._navigate(k))
+                w.bind("<Enter>",    lambda e, r=row, i=icon_lbl, t=text_lbl: self._nav_hover(r, i, t, True))
+                w.bind("<Leave>",    lambda e, r=row, i=icon_lbl, t=text_lbl: self._nav_hover(r, i, t, False))
+
+            self._nav_btns[key] = (row, icon_lbl, text_lbl)
+
+    def _nav_hover(self, row, icon, text, entering):
+        if row.cget("bg") == ORANGE:
+            return
+        col = ORANGE_DIM if entering else BG_SIDEBAR
+        row.config(bg=col)
+        icon.config(bg=col)
+        text.config(bg=col)
+
+    def _navigate(self, page_key: str):
+        for key, (row, icon, text) in self._nav_btns.items():
+            if key == page_key:
+                row.config(bg=ORANGE)
+                icon.config(bg=ORANGE, fg="#FFFFFF")
+                text.config(bg=ORANGE, fg="#FFFFFF")
+            else:
+                row.config(bg=BG_SIDEBAR)
+                icon.config(bg=BG_SIDEBAR, fg=TEXT_MID)
+                text.config(bg=BG_SIDEBAR, fg=TEXT_MID)
+
+        for key, page in self._pages.items():
+            if key == page_key:
+                page.pack(fill="both", expand=True)
+            else:
+                page.pack_forget()
+
+    # ── Pages ──────────────────────────────────────────────────────────────────
+
+    def _build_pages(self):
+        self._pages: dict = {}
+        self._pages["dashboard"] = self._build_dashboard()
+
+        for key, ManagerCls, attr in [
+            ("professores", ProfessorManager, "professor_manager"),
+            ("turmas",      TurmaManager,     "turma_manager"),
+            ("salas",       SalaManager,      "sala_manager"),
+            ("faltas",      AbsenceManager,   "absence_manager"),
+        ]:
+            frame = tk.Frame(self.content_area, bg=BG_PAGE)
+            manager = ManagerCls(frame, self)
+            manager.pack(fill="both", expand=True)
+            setattr(self, attr, manager)
+            self._pages[key] = frame
+
+    # ── Dashboard page ─────────────────────────────────────────────────────────
+
+    def _build_dashboard(self) -> tk.Frame:
+        page = tk.Frame(self.content_area, bg=BG_PAGE)
+
+        canvas = tk.Canvas(page, bg=BG_PAGE, highlightthickness=0)
+        vsb = ttk.Scrollbar(page, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(fill="both", expand=True)
+
+        inner = tk.Frame(canvas, bg=BG_PAGE)
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))  # noqa
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        PAD = 28
+
+        # ── Header ────────────────────────────────────────────────────────────
+        hdr = tk.Frame(inner, bg=BG_PAGE)
+        hdr.pack(fill="x", padx=PAD, pady=(26, 0))
+        tk.Label(hdr, text="Dashboard", bg=BG_PAGE, fg=TEXT_DARK, font=(FONT, 22, "bold")).pack(anchor="w")
+        tk.Label(hdr, text="Gerencie horários e visualize métricas em tempo real.", bg=BG_PAGE, fg=TEXT_MID, font=(FONT, 10)).pack(anchor="w", pady=(3, 0))
+
+        # ── Metric cards ──────────────────────────────────────────────────────
+        cards_row = tk.Frame(inner, bg=BG_PAGE)
+        cards_row.pack(fill="x", padx=PAD, pady=(22, 0))
+
+        metrics = [
+            ("Professores", "0", "👤", BLUE,  BLUE_BG),
+            ("Turmas",      "0", "🎓", ORANGE, ORANGE_DIM),
+            ("Salas",       "0", "🏫", GREEN,  GREEN_BG),
+            ("Aulas",       "0", "📋", TEXT_MID, BG_PAGE),
+        ]
+        self.dashboard_labels: dict = {}
+        for title, val, icon, _accent, icon_bg in metrics:
+            c = _card(cards_row)
+            c.pack(side="left", fill="both", expand=True, padx=(0, 14))
+
+            top = tk.Frame(c, bg=BG_CARD)
+            top.pack(fill="x", padx=16, pady=(16, 6))
+            tk.Label(top, text=title, bg=BG_CARD, fg=TEXT_MID, font=(FONT, 9)).pack(side="left")
+
+            icon_box = tk.Frame(top, bg=icon_bg, width=32, height=32)
+            icon_box.pack(side="right")
+            icon_box.pack_propagate(False)
+            tk.Label(icon_box, text=icon, bg=icon_bg, font=(FONT, 13)).place(relx=0.5, rely=0.5, anchor="center")
+
+            val_lbl = tk.Label(c, text=val, bg=BG_CARD, fg=TEXT_DARK, font=(FONT, 26, "bold"))
+            val_lbl.pack(anchor="w", padx=16, pady=(0, 18))
+            self.dashboard_labels[title] = val_lbl
+
+        # ── Action buttons ────────────────────────────────────────────────────
+        actions = tk.Frame(inner, bg=BG_PAGE)
+        actions.pack(fill="x", padx=PAD, pady=(22, 0))
+
+        btns = [
+            ("  Gerar Grade",    self.gerar_grade,    True,  False),
+            ("  Exportar CSV",   self.exportar_grade, False, False),
+            ("  Limpar Grade",   self.clear_grade,    False, False),
+            ("ℹ️  Como usar",    self.show_info_main, False, False),
+        ]
+        for txt, cmd, prim, dng in btns:
+            b = _btn(actions, txt, cmd, primary=prim, danger=dng)
+            b.pack(side="left", padx=(0, 10))
+
+        self.grade_summary_label = tk.Label(
+            inner, text="Nenhuma grade gerada ainda.",
+            bg=BG_PAGE, fg=TEXT_LIGHT, font=(FONT, 9),
+        )
+        self.grade_summary_label.pack(anchor="w", padx=PAD, pady=(8, 0))
+
+        # ── Alerts ────────────────────────────────────────────────────────────
+        sec_hdr(inner, "Alertas e Status", PAD, top_pad=22)
+        alert_card = _card(inner)
+        alert_card.pack(fill="x", padx=PAD)
+        self.alert_text = tk.Text(
+            alert_card, height=5,
+            font=("Consolas", 9), relief="flat",
+            bg=BG_CARD, fg=TEXT_DARK, bd=0,
+            padx=14, pady=12, insertbackground=TEXT_DARK,
+        )
         self.alert_text.pack(fill="both", expand=True)
-        self.alert_text.config(state=tk.DISABLED) # Torna o campo de texto somente leitura.
+        self.alert_text.config(state=tk.DISABLED)
 
-        # Treeview para exibir a grade horária gerada.
-        ttk.Label(scrollable_frame, text="Grade Horária Gerada", style="CardHeader.TLabel").pack(padx=10, pady=(16, 4), anchor="w")
-        self.grade_container = RoundedFrame(scrollable_frame, bg_color="#111827", border_color="#1F2937", corner_radius=18, padding=14)
-        self.grade_container.pack(pady=0, padx=10, fill="x")
+        # ── Grade table ───────────────────────────────────────────────────────
+        sec_hdr(inner, "Grade Horária Gerada", PAD, top_pad=26)
+        grade_card = _card(inner)
+        grade_card.pack(fill="x", padx=PAD, pady=(0, 30))
 
-        self.grade_tree = ttk.Treeview(self.grade_container.inner_frame, columns=("Dia", "Horário", "Bloco", "Turma", "Disciplina", "Professor", "Sala"), show="headings", selectmode="browse")
-        self.grade_tree.heading("Dia", text="Dia")
-        self.grade_tree.heading("Horário", text="Horário")
-        self.grade_tree.heading("Bloco", text="Bloco")
-        self.grade_tree.heading("Turma", text="Turma")
-        self.grade_tree.heading("Disciplina", text="Disciplina")
-        self.grade_tree.heading("Professor", text="Professor")
-        self.grade_tree.heading("Sala", text="Sala")
+        cols = [
+            ("Dia", 80), ("Horário", 90), ("Bloco", 80),
+            ("Turma", 110), ("Disciplina", 160), ("Professor", 160), ("Sala", 70),
+        ]
+        self.grade_tree = ttk.Treeview(
+            grade_card,
+            columns=[c for c, _ in cols],
+            show="headings", selectmode="browse",
+        )
+        for col, w in cols:
+            self.grade_tree.heading(col, text=col)
+            self.grade_tree.column(col, width=w, anchor="center" if w <= 90 else "w")
 
-        # Ajusta a largura das colunas
-        self.grade_tree.column("Dia", width=80, anchor="center")
-        self.grade_tree.column("Horário", width=70, anchor="center")
-        self.grade_tree.column("Bloco", width=70, anchor="center")
-        self.grade_tree.column("Turma", width=100)
-        self.grade_tree.column("Disciplina", width=150)
-        self.grade_tree.column("Professor", width=150)
-        self.grade_tree.column("Sala", width=70, anchor="center")
-
-        self.grade_tree.tag_configure("oddrow", background="#111827")
-        self.grade_tree.tag_configure("evenrow", background="#0F172A")
+        self.grade_tree.tag_configure("odd",  background=BG_CARD)
+        self.grade_tree.tag_configure("even", background="#FAFAFA")
         self.grade_tree.pack(side="left", fill="both", expand=True)
 
-        self.update_dashboard_summary()
+        tree_vsb = ttk.Scrollbar(grade_card, orient="vertical", command=self.grade_tree.yview)
+        tree_vsb.pack(side="right", fill="y")
+        self.grade_tree.config(yscrollcommand=tree_vsb.set)
 
-        # Adiciona barra de rolagem à Treeview.
-        tree_scrollbar = ttk.Scrollbar(self.grade_container.inner_frame, orient="vertical", command=self.grade_tree.yview)
-        tree_scrollbar.pack(side="right", fill="y")
-        self.grade_tree.config(yscrollcommand=tree_scrollbar.set)
+        return page
 
-    def create_professor_tab(self):
-        """Cria a aba para gerenciamento de professores."""
-        professor_frame = ttk.Frame(self.notebook, style="App.TFrame")
-        self.notebook.add(professor_frame, text="Gerenciar Professores")
-        self.professor_manager = ProfessorManager(professor_frame, self) # Instancia o ProfessorManager.
-        self.professor_manager.pack(expand=True, fill="both")
+    # ── Helpers ────────────────────────────────────────────────────────────────
 
-    def create_turma_tab(self):
-        """Cria a aba para gerenciamento de turmas."""
-        turma_frame = ttk.Frame(self.notebook, style="App.TFrame")
-        self.notebook.add(turma_frame, text="Gerenciar Turmas")
-        self.turma_manager = TurmaManager(turma_frame, self) # Instancia o TurmaManager.
-        self.turma_manager.pack(expand=True, fill="both")
-
-    def create_sala_tab(self):
-        """Cria a aba para gerenciamento de salas."""
-        sala_frame = ttk.Frame(self.notebook, style="App.TFrame")
-        self.notebook.add(sala_frame, text="Gerenciar Salas")
-        self.sala_manager = SalaManager(sala_frame, self) # Instancia o SalaManager.
-        self.sala_manager.pack(expand=True, fill="both")
-
-    def update_alert_text(self, message, append=False):
-        """Atualiza a área de texto de alertas."""
-        self.alert_text.config(state=tk.NORMAL) # Habilita edição temporariamente.
+    def update_alert_text(self, message: str, append: bool = False):
+        self.alert_text.config(state=tk.NORMAL)
         if not append:
             self.alert_text.delete(1.0, tk.END)
         self.alert_text.insert(tk.END, message)
-        self.alert_text.config(state=tk.DISABLED) # Desabilita edição novamente.
-        self.alert_text.see(tk.END) # Rola para o final do texto.
-
-    def start_ui_animation(self):
-        """Inicia a animação contínua dos elementos visuais."""
-        self.animation_phase = 0.0
-        self.animate_ui()
-
-    def animate_ui(self):
-        """Executa um passo da animação de interface e agenda o próximo."""
-        pulse = (math.sin(self.animation_phase) + 1) / 2
-        border_base = (31, 41, 55)
-        border_light = 18
-        r = min(255, max(0, int(border_base[0] + border_light * pulse)))
-        g = min(255, max(0, int(border_base[1] + border_light * pulse)))
-        b = min(255, max(0, int(border_base[2] + border_light * pulse)))
-        border_color = f"#{r:02x}{g:02x}{b:02x}"
-
-        for frame in [self.action_frame, self.alert_container, self.grade_container] + self.stats_cards:
-            if hasattr(frame, 'set_border_color'):
-                frame.set_border_color(border_color)
-
-        status_base = (8, 19, 43)
-        status_light = 10
-        sr = min(255, max(0, int(status_base[0] + status_light * pulse)))
-        sg = min(255, max(0, int(status_base[1] + status_light * pulse)))
-        sb = min(255, max(0, int(status_base[2] + status_light * pulse)))
-        self.status_label.config(background=f"#{sr:02x}{sg:02x}{sb:02x}")
-
-        self.animation_phase += 0.15
-        self.root.after(80, self.animate_ui)
+        self.alert_text.config(state=tk.DISABLED)
+        self.alert_text.see(tk.END)
 
     def update_dashboard_summary(self):
-        """Atualiza os cartões de métricas do painel principal."""
-        professores = len(self.professor_manager.professores) if hasattr(self, 'professor_manager') else 0
-        turmas = len(self.turma_manager.turmas) if hasattr(self, 'turma_manager') else 0
-        salas = len(self.sala_manager.salas) if hasattr(self, 'sala_manager') else 0
-        aulas = len(self.grade_gerada) if hasattr(self, 'grade_gerada') else 0
-
-        self.dashboard_labels["Professores"].config(text=str(professores))
-        self.dashboard_labels["Turmas"].config(text=str(turmas))
-        self.dashboard_labels["Salas"].config(text=str(salas))
-        self.dashboard_labels["Aulas geradas"].config(text=str(aulas))
+        if not hasattr(self, "dashboard_labels"):
+            return
+        self.dashboard_labels["Professores"].config(
+            text=str(len(self.professor_manager.professores) if hasattr(self, "professor_manager") else 0)
+        )
+        self.dashboard_labels["Turmas"].config(
+            text=str(len(self.turma_manager.turmas) if hasattr(self, "turma_manager") else 0)
+        )
+        self.dashboard_labels["Salas"].config(
+            text=str(len(self.sala_manager.salas) if hasattr(self, "sala_manager") else 0)
+        )
+        self.dashboard_labels["Aulas"].config(
+            text=str(len(self.grade_gerada))
+        )
 
     def set_status(self, message: str):
-        """Atualiza a barra de status inferior."""
         self.status_var.set(message)
 
+    # ── Actions ────────────────────────────────────────────────────────────────
+
     def gerar_grade(self):
-        """Carrega dados dos managers, gera a grade e exibe na Treeview."""
-        self.set_status("Gerando grade horária...")
-        self.update_alert_text("Iniciando geração da grade horária...\n")
+        self.set_status("Gerando grade horária…")
+        self.update_alert_text("Iniciando geração da grade horária…\n")
         try:
-            # Carregar dados diretamente dos managers, que já carregam dos CSVs.
             professores = self.professor_manager.professores
-            turmas = self.turma_manager.turmas
-            salas = self.sala_manager.salas
+            turmas      = self.turma_manager.turmas
+            salas       = self.sala_manager.salas
 
             if not professores or not turmas or not salas:
                 messagebox.showwarning("Aviso", "Certifique-se de ter Professores, Turmas e Salas cadastrados.")
-                self.update_alert_text("⚠️ Erro: Dados insuficientes para gerar a grade.\n", append=True)
+                self.update_alert_text("⚠️  Dados insuficientes para gerar a grade.\n", append=True)
                 return
 
-            # Cria uma instância do Scheduler e gera a grade horária.
             scheduler = Scheduler(professores, turmas, salas)
             self.grade_gerada = scheduler.gerar_grade()
             alertas = scheduler.get_alertas()
 
-            # Limpa a Treeview da grade.
             for i in self.grade_tree.get_children():
                 self.grade_tree.delete(i)
 
-            # Exibe a grade gerada na Treeview.
             if self.grade_gerada:
-                for index, aula in enumerate(self.grade_gerada):
-                    tag = "evenrow" if index % 2 == 0 else "oddrow"
+                for idx, aula in enumerate(self.grade_gerada):
+                    tag = "even" if idx % 2 == 0 else "odd"
                     self.grade_tree.insert("", "end", values=(
-                        aula.dia, f"{aula.horario}º Horário", aula.bloco, 
-                        aula.turma, aula.disciplina, aula.professor, aula.sala
+                        aula.dia, f"{aula.horario}º Horário", aula.bloco,
+                        aula.turma, aula.disciplina, aula.professor, aula.sala,
                     ), tags=(tag,))
-                self.update_alert_text("✅ SUCESSO: Grade horária gerada e exibida!\n", append=True)
+                self.update_alert_text("✅  Grade gerada com sucesso!\n", append=True)
                 self.grade_summary_label.config(text=f"{len(self.grade_gerada)} aulas geradas.")
-                self.set_status(f"Grade gerada com sucesso: {len(self.grade_gerada)} aulas alocadas.")
-                self.update_dashboard_summary()
+                self.set_status(f"Grade gerada: {len(self.grade_gerada)} aulas alocadas.")
             else:
-                self.update_alert_text("⚠️ ATENÇÃO: Nenhuma aula foi gerada. Verifique os dados de entrada.\n", append=True)
+                self.update_alert_text("⚠️  Nenhuma aula gerada. Verifique os dados.\n", append=True)
                 self.grade_summary_label.config(text="Nenhuma aula gerada.")
-                self.set_status("Não foi possível gerar a grade. Verifique os dados.")
-                self.update_dashboard_summary()
+                self.set_status("Não foi possível gerar a grade.")
 
-            # Exibe os alertas gerados pelo Scheduler na área de texto.
+            self.update_dashboard_summary()
+
             if alertas:
-                self.update_alert_text("\n⚠️ ATENÇÃO: Foram encontrados problemas na alocação:\n\n", append=True)
-                for alerta in alertas:
-                    self.update_alert_text(f"• {alerta}\n", append=True)
+                self.update_alert_text("\n⚠️  Problemas encontrados:\n\n", append=True)
+                for a in alertas:
+                    self.update_alert_text(f"  • {a}\n", append=True)
             else:
-                self.update_alert_text("\n✅ Nenhuma conflito de professor encontrado durante a geração.\n", append=True)
+                self.update_alert_text("\n✅  Nenhum conflito de alocação encontrado.\n", append=True)
 
         except Exception as e:
-            messagebox.showerror("Erro Crítico", f"Ocorreu um erro ao gerar a grade:\n{str(e)}")
-            self.update_alert_text(f"❌ Erro crítico: {str(e)}\n", append=True)
+            messagebox.showerror("Erro Crítico", f"Erro ao gerar a grade:\n{e}")
+            self.update_alert_text(f"❌  Erro: {e}\n", append=True)
 
     def exportar_grade(self):
-        """Permite ao usuário exportar a grade horária atualmente exibida para um arquivo CSV."""
         if not self.grade_gerada:
-            messagebox.showwarning("Aviso", "Nenhuma grade horária foi gerada para exportar.")
+            messagebox.showwarning("Aviso", "Nenhuma grade foi gerada para exportar.")
             return
-
-        save_path = filedialog.asksaveasfilename(
-            defaultextension=".csv", 
-            filetypes=[("CSV files", "*.csv")], 
-            title="Salvar Grade Horária Gerada",
-            initialfile="grade_horaria_gerada.csv"
+        path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv")],
+            title="Salvar Grade Horária",
+            initialfile="grade_horaria.csv",
         )
-        if save_path:
+        if path:
             try:
-                DataHandler.save_grade(save_path, self.grade_gerada)
-                messagebox.showinfo("Exportação Concluída", f"A grade horária foi salva com sucesso em:\n{save_path}")
+                DataHandler.save_grade(path, self.grade_gerada)
+                messagebox.showinfo("Exportação concluída", f"Grade salva em:\n{path}")
             except Exception as e:
-                messagebox.showerror("Erro de Exportação", f"Ocorreu um erro ao salvar a grade:\n{str(e)}")
+                messagebox.showerror("Erro de exportação", f"Erro ao salvar:\n{e}")
 
     def clear_grade(self):
-        """Limpa a grade gerada da interface e zera a lista de aulas."""
         self.grade_gerada = []
         for i in self.grade_tree.get_children():
             self.grade_tree.delete(i)
         self.grade_summary_label.config(text="Nenhuma aula gerada.")
         self.update_dashboard_summary()
-        self.set_status("Aulas geradas zeradas.")
-        self.update_alert_text("Grade horária limpa. Gere novamente se desejar.\n", append=False)
+        self.set_status("Grade limpa.")
+        self.update_alert_text("Grade limpa.\n")
 
     def show_info_main(self):
-        msg = (
-            "Para gerar a grade horária corretamente, siga estes passos:\n\n"
-            "1. Cadastre os Professores, Turmas e Salas nas abas correspondentes.\n"
-            "2. Certifique-se de que as disciplinas dos professores correspondem às disciplinas das turmas.\n"
-            "3. Clique em 'Gerar Grade' para criar o horário.\n"
-            "4. Se houver alertas ou erros, verifique os dados cadastrados e tente novamente."
-        )
-        messagebox.showinfo("Como usar - Gerar Grade Horária", msg)
+        messagebox.showinfo("Como usar", (
+            "1. Cadastre Professores, Turmas e Salas nas páginas laterais.\n"
+            "2. Confirme que as disciplinas dos professores batem com as das turmas.\n"
+            "3. Clique em 'Gerar Grade'.\n"
+            "4. Verifique alertas e exporte em CSV se necessário."
+        ))
 
-# Bloco principal de execução do script.
+
+# ── Utility ────────────────────────────────────────────────────────────────────
+
+def sec_hdr(parent, text: str, pad: int, top_pad: int = 16):
+    row = tk.Frame(parent, bg=BG_PAGE)
+    row.pack(fill="x", padx=pad, pady=(top_pad, 8))
+    tk.Label(row, text=text, bg=BG_PAGE, fg=TEXT_DARK, font=(FONT, 11, "bold")).pack(side="left")
+    return row
+
+
 if __name__ == "__main__":
-    root = tk.Tk()  # Cria a janela principal do Tkinter.
-    app = SchedulerApp(root)  # Instancia a aplicação.
-    root.mainloop()  # Inicia o loop de eventos do Tkinter, mantendo a janela aberta e responsiva.
+    root = tk.Tk()
+    app = SchedulerApp(root)
+    root.mainloop()
