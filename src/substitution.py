@@ -15,6 +15,10 @@ _ABBR_TO_FULL: Dict[str, str] = {
     "Seg": "Segunda", "Ter": "Terça",  "Qua": "Quarta",
     "Qui": "Quinta",  "Sex": "Sexta",
 }
+# Reverse map: full name → abbreviated form used in the professor UI.
+# CORREÇÃO BUG 3: a UI de professores instrui o usuário a entrar "Seg-Manhã" (abreviado),
+# mas o scheduler armazena aula.dia em nome completo "Segunda". Precisamos aceitar ambos.
+_FULL_TO_ABBR: Dict[str, str] = {v: k for k, v in _ABBR_TO_FULL.items()}
 
 
 @dataclass
@@ -70,9 +74,18 @@ def find_substitutes(
 
         coverable: List[Aula] = []
         for aula in affected:
-            disp_slot = f"{aula.dia}-{aula.bloco}"     # "Segunda-Manhã"
+            # CORREÇÃO BUG 3: verifica disponibilidade nos dois formatos possíveis.
+            # O scheduler usa nome completo ("Segunda-Manhã"), mas a UI de professores
+            # orienta o usuário a digitar formato abreviado ("Seg-Manhã"). Aceitamos ambos.
+            disp_full = f"{aula.dia}-{aula.bloco}"                  # "Segunda-Manhã"
+            abbr_day  = _FULL_TO_ABBR.get(aula.dia, aula.dia)
+            disp_abbr = f"{abbr_day}-{aula.bloco}"                  # "Seg-Manhã"
 
-            if disp_slot not in prof.disponibilidade:
+            is_available = (
+                disp_full in prof.disponibilidade
+                or disp_abbr in prof.disponibilidade
+            )
+            if not is_available:
                 continue
             if (aula.dia, aula.horario) in occupied.get(prof.nome, set()):
                 continue

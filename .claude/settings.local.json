@@ -9,7 +9,9 @@
       "Bash(pip install *)",
       "Bash(python -c \"import matplotlib; print\\('matplotlib', matplotlib.__version__, 'OK'\\)\")",
       "Bash(python -c ' *)",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('src/app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"from src.theme import Theme; from src.app import SchedulerApp; print\\('OK'\\)\")",
+      "Bash(python -c \"from src.theme import Theme, LIGHT, DARK; print\\('tema OK'\\); from src.app import SchedulerApp; print\\('app OK'\\)\")"
     ]
   }
 }

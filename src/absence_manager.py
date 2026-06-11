@@ -11,6 +11,9 @@ from .charts import FaltaBarChart
 from .substitution import find_substitutes, affected_classes, SubstituteOption
 
 # ── Design tokens ──────────────────────────────────────────────────────────────
+# Nome completo dos dias da semana indexado por date.weekday() (0=Segunda … 6=Domingo).
+_WEEKDAY_FULL = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+
 BG_PAGE    = "#F5F6FA"
 BG_CARD    = "#FFFFFF"
 ORANGE     = "#F97316"
@@ -89,6 +92,16 @@ class AbsenceManager(tk.Frame):
         if hasattr(self, "_chart"):
             self._chart.refresh(self.faltas, grade)
 
+    def refresh_theme(self):
+        """Reconfigure all treeview tags and charts after a theme toggle."""
+        self.faltas_tree.tag_configure("falta",   background=RED_BG,   foreground=RED)
+        self.faltas_tree.tag_configure("coberta", background=AMBER_BG, foreground=AMBER)
+        self.report_tree.tag_configure("present", background=GREEN_BG, foreground=GREEN)
+        self.report_tree.tag_configure("absent",  background=RED_BG,   foreground=RED)
+        self.report_tree.tag_configure("covered", background=AMBER_BG, foreground=AMBER)
+        self.report_tree.tag_configure("unknown", background=BG_CARD,  foreground=TEXT_MID)
+        self.refresh_charts()
+
     # ── UI construction ────────────────────────────────────────────────────────
 
     def _build_ui(self):
@@ -122,12 +135,12 @@ class AbsenceManager(tk.Frame):
 
         self._dash: Dict[str, tk.Label] = {}
         dash_defs = [
-            ("Faltas Hoje",      "0", "📅", RED_BG),
-            ("Faltas na Semana", "0", "📊", AMBER_BG),
-            ("Prof. Ausentes",   "0", "👤", RED_BG),
-            ("Aulas Afetadas",   "0", "📋", ORANGE_DIM),
+            ("Faltas Hoje",      "0", "📅", RED,   RED_BG),
+            ("Faltas na Semana", "0", "📊", AMBER, AMBER_BG),
+            ("Prof. Ausentes",   "0", "👤", RED,   RED_BG),
+            ("Aulas Afetadas",   "0", "📋", ORANGE, ORANGE_DIM),
         ]
-        for title, val, icon, icon_bg in dash_defs:
+        for title, val, icon, accent, icon_bg in dash_defs:
             c = _card(cards_row)
             c.pack(side="left", fill="both", expand=True, padx=(0, 14))
             top_row = tk.Frame(c, bg=BG_CARD)
@@ -136,7 +149,7 @@ class AbsenceManager(tk.Frame):
             ib = tk.Frame(top_row, bg=icon_bg, width=32, height=32)
             ib.pack(side="right")
             ib.pack_propagate(False)
-            tk.Label(ib, text=icon, bg=icon_bg, font=(FONT, 13)).place(relx=0.5, rely=0.5, anchor="center")
+            tk.Label(ib, text=icon, bg=icon_bg, fg=accent, font=(FONT, 13)).place(relx=0.5, rely=0.5, anchor="center")
             vl = tk.Label(c, text=val, bg=BG_CARD, fg=TEXT_DARK, font=(FONT, 26, "bold"))
             vl.pack(anchor="w", padx=16, pady=(0, 18))
             self._dash[title] = vl
@@ -394,10 +407,15 @@ class AbsenceManager(tk.Frame):
         filter_str  = self.filter_entry.get().strip()
         filter_date = self._parse_date(filter_str)
 
-        # Build maps for the filtered date: absent professor → substituto name
+        # Build map for the filtered date: absent professor → substituto name
         absent_map: Dict[str, str] = {}
+        # CORREÇÃO BUG 2: derivamos o nome completo do dia da semana da data filtrada.
+        # Só marcaremos como FALTA as aulas cujo dia da semana coincide com a data da falta,
+        # evitando que todos os dias do professor sejam marcados como ausente.
+        filter_weekday: Optional[str] = None
         if filter_date:
             date_str = filter_date.strftime("%d/%m/%Y")
+            filter_weekday = _WEEKDAY_FULL[filter_date.weekday()]  # ex: "Quinta"
             for f in self.faltas:
                 if f.data == date_str:
                     absent_map[f.professor] = f.substituto  # "" when not yet assigned
@@ -405,7 +423,15 @@ class AbsenceManager(tk.Frame):
         gap_count     = 0
         covered_count = 0
         for aula in grade:
-            if aula.professor in absent_map:
+            # A aula só conta como FALTA se:
+            #   1. O professor está ausente na data filtrada, E
+            #   2. O dia da aula é o mesmo dia da semana da data filtrada.
+            is_absent_slot = (
+                filter_weekday is not None
+                and aula.dia == filter_weekday
+                and aula.professor in absent_map
+            )
+            if is_absent_slot:
                 sub = absent_map[aula.professor]
                 if sub:
                     tag    = "covered"
@@ -691,7 +717,17 @@ class AbsenceManager(tk.Frame):
                     "Substituto", "Observações",
                 ])
                 for falta in sorted(self.faltas, key=lambda x: x.data):
-                    aulas = [a for a in grade if a.professor == falta.professor]
+                    # Filtra aulas pelo dia exato da falta (via weekday da data registrada)
+                    # para não listar turmas de outros dias na coluna "Turma(s) Afetada(s)".
+                    parsed_falta_date = self._parse_date(falta.data)
+                    if parsed_falta_date:
+                        full_day = _WEEKDAY_FULL[parsed_falta_date.weekday()]
+                        aulas = [
+                            a for a in grade
+                            if a.professor == falta.professor and a.dia == full_day
+                        ]
+                    else:
+                        aulas = [a for a in grade if a.professor == falta.professor]
                     turmas = " | ".join(sorted({a.turma for a in aulas})) or "—"
                     discs  = " | ".join(sorted({a.disciplina for a in aulas})) or "—"
                     salas  = " | ".join(sorted({a.sala for a in aulas})) or "—"

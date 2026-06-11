@@ -1,4 +1,3 @@
-import random
 from typing import List, Dict, Optional
 from .models import Professor, Turma, Sala, Aula
 
@@ -38,15 +37,13 @@ class Scheduler:
             # Seleciona as primeiras 5 disciplinas da turma, conforme o requisito de 5 disciplinas por turma.
             disciplinas_da_turma = turma.disciplinas[:5]
             
-            # Prepara a lista de disciplinas a serem alocadas para a turma na semana.
-            # Cada uma das 5 disciplinas deve ter 4 aulas por semana para totalizar 20 aulas (5 dias * 4 aulas/dia).
+            # Prepara a lista de disciplinas intercalando-as por dia: [D1,D2,D3,D4,D5, D1,D2,...]
+            # Distribuição determinística — sem random — garante que a grade é idêntica
+            # a cada geração, tornando relatórios e gráficos estáveis e reproduzíveis.
             disciplinas_para_alocar = []
-            for d in disciplinas_da_turma:
-                disciplinas_para_alocar.extend([d] * 4) # Adiciona 4 vezes cada disciplina.
-            
-            # Embaralha a ordem das disciplinas a serem alocadas.
-            # Isso ajuda a testar diferentes combinações e a distribuir as disciplinas de forma mais variada.
-            random.shuffle(disciplinas_para_alocar)
+            for i in range(4):           # 4 aulas por disciplina
+                for d in disciplinas_da_turma:
+                    disciplinas_para_alocar.append(d)
             
             # Itera sobre cada dia da semana e cada horário para tentar alocar uma aula.
             for dia in self.DIAS:

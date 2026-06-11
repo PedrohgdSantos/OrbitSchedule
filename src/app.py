@@ -11,6 +11,7 @@ from .absence_manager import AbsenceManager
 from .models import Aula
 from .animations import fade_page, count_up, lerp_color
 from .charts import FaltaBarChart, GradeHeatmap
+from .theme import Theme
 
 # ── Design tokens ──────────────────────────────────────────────────────────────
 BG_PAGE     = "#F5F6FA"
@@ -84,7 +85,8 @@ class SchedulerApp:
     # ── TTK global styles ──────────────────────────────────────────────────────
 
     def _configure_ttk_styles(self):
-        s = ttk.Style()
+        self._ttk_style = ttk.Style()
+        s = self._ttk_style
         s.theme_use("clam")
         s.configure(".", background=BG_PAGE, foreground=TEXT_DARK, font=(FONT, 10))
         s.configure("TFrame", background=BG_PAGE)
@@ -176,7 +178,8 @@ class SchedulerApp:
             row = tk.Frame(nav_wrap, bg=BG_SIDEBAR, cursor="hand2")
             row.pack(fill="x", padx=10, pady=2)
 
-            icon_lbl = tk.Label(row, text=icon, bg=BG_SIDEBAR, fg=TEXT_MID, font=(FONT, 13), width=3)
+            # TEXT_DARK garante contraste adequado em ambos os temas (preto no light, branco no dark).
+            icon_lbl = tk.Label(row, text=icon, bg=BG_SIDEBAR, fg=TEXT_DARK, font=(FONT, 13), width=3)
             icon_lbl.pack(side="left", padx=(6, 0), pady=10)
 
             text_lbl = tk.Label(row, text=label, bg=BG_SIDEBAR, fg=TEXT_MID, font=(FONT, 10), anchor="w")
@@ -188,6 +191,49 @@ class SchedulerApp:
                 w.bind("<Leave>",    lambda e, k=key, r=row, i=icon_lbl, t=text_lbl: self._nav_hover(k, r, i, t, False))
 
             self._nav_btns[key] = (row, icon_lbl, text_lbl)
+
+        # ── Dark mode toggle (pinned to bottom of sidebar) ─────────────────────
+        tk.Frame(self.sidebar_frame, bg=BORDER, height=1).pack(side="bottom", fill="x")
+        self._theme_btn = tk.Button(
+            self.sidebar_frame,
+            text="🌙  Modo Escuro",
+            command=self._toggle_theme,
+            bg=BG_SIDEBAR, fg=TEXT_MID,
+            font=(FONT, 9), relief="flat", bd=0,
+            padx=18, pady=11, cursor="hand2", anchor="w",
+        )
+        self._theme_btn.pack(side="bottom", fill="x")
+        self._theme_btn.bind("<Enter>", lambda _e: self._theme_btn.config(bg=ORANGE_DIM))
+        self._theme_btn.bind("<Leave>", lambda _e: self._theme_btn.config(bg=BG_SIDEBAR))
+
+    def _toggle_theme(self):
+        """Switch between light and dark mode."""
+        remap = Theme.build_remap()    # capture before toggling
+        Theme.toggle()
+        Theme.apply(self.root, self._ttk_style, remap)
+        self.root.configure(bg=Theme.current()["BG_PAGE"])
+
+        # Reconfigure grade treeview row tags — TTK style não afeta tags explícitas.
+        p = Theme.current()
+        self.grade_tree.tag_configure("odd",  background=p["ROW_ODD"])
+        self.grade_tree.tag_configure("even", background=p["ROW_EVEN"])
+
+        # Forçar redraw dos charts (matplotlib facecolor + canvas heatmap).
+        self.refresh_charts()
+
+        # Propagar para o AbsenceManager (treeview tags + chart inline).
+        if hasattr(self, "absence_manager"):
+            self.absence_manager.refresh_theme()
+
+        # Update button label and hover binding to new sidebar color
+        if Theme.is_dark:
+            self._theme_btn.config(text="☀️  Modo Claro")
+        else:
+            self._theme_btn.config(text="🌙  Modo Escuro")
+        new_sidebar = p["BG_SIDEBAR"]
+        new_hover   = p["ORANGE_DIM"]
+        self._theme_btn.bind("<Enter>", lambda _e: self._theme_btn.config(bg=new_hover))
+        self._theme_btn.bind("<Leave>", lambda _e: self._theme_btn.config(bg=new_sidebar))
 
     def _nav_hover(self, key: str, row, icon, text, entering: bool):
         # Never re-style the currently active nav item.
@@ -229,7 +275,7 @@ class SchedulerApp:
                     text.config(bg=ORANGE, fg="#FFFFFF")
                 else:
                     row.config(bg=BG_SIDEBAR)
-                    icon.config(bg=BG_SIDEBAR, fg=TEXT_MID)
+                    icon.config(bg=BG_SIDEBAR, fg=TEXT_DARK)
                     text.config(bg=BG_SIDEBAR, fg=TEXT_MID)
 
             for key, page in self._pages.items():
@@ -294,7 +340,7 @@ class SchedulerApp:
             ("Aulas",       "0", "📋", TEXT_MID, BG_PAGE),
         ]
         self.dashboard_labels: dict = {}
-        for title, val, icon, _accent, icon_bg in metrics:
+        for title, val, icon, accent, icon_bg in metrics:
             c = _card(cards_row)
             c.pack(side="left", fill="both", expand=True, padx=(0, 14))
 
@@ -305,7 +351,8 @@ class SchedulerApp:
             icon_box = tk.Frame(top, bg=icon_bg, width=32, height=32)
             icon_box.pack(side="right")
             icon_box.pack_propagate(False)
-            tk.Label(icon_box, text=icon, bg=icon_bg, font=(FONT, 13)).place(relx=0.5, rely=0.5, anchor="center")
+            # fg=accent garante que ícones não-emoji ficam visíveis em qualquer tema.
+            tk.Label(icon_box, text=icon, bg=icon_bg, fg=accent, font=(FONT, 13)).place(relx=0.5, rely=0.5, anchor="center")
 
             val_lbl = tk.Label(c, text=val, bg=BG_CARD, fg=TEXT_DARK, font=(FONT, 26, "bold"))
             val_lbl.pack(anchor="w", padx=16, pady=(0, 18))

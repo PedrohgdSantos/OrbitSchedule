@@ -21,16 +21,24 @@ except ImportError:
 
 from .models import Falta, Aula
 
+# Maps abbreviated weekday (stored in Falta.dia_semana) to the full name used in Aula.dia.
+_ABBR_TO_FULL: Dict[str, str] = {
+    "Seg": "Segunda", "Ter": "Terça", "Qua": "Quarta",
+    "Qui": "Quinta",  "Sex": "Sexta",
+}
+
 # ── Design tokens ──────────────────────────────────────────────────────────────
-BG_CARD  = "#FFFFFF"
-BG_PAGE  = "#F5F6FA"
-BORDER   = "#E5E7EB"
-ORANGE   = "#F97316"
-RED      = "#DC2626"
-GREEN    = "#16A34A"
-TEXT_MID = "#6B7280"
-TEXT_DRK = "#111827"
-FONT     = "Segoe UI"
+BG_CARD   = "#FFFFFF"
+BG_PAGE   = "#F5F6FA"
+BORDER    = "#E5E7EB"
+ORANGE    = "#F97316"
+RED       = "#DC2626"
+RED_BG    = "#FEE2E2"
+GREEN     = "#16A34A"
+GREEN_BG  = "#DCFCE7"
+TEXT_MID  = "#6B7280"
+TEXT_DRK  = "#111827"
+FONT      = "Segoe UI"
 
 
 # ── Bar charts (matplotlib) ────────────────────────────────────────────────────
@@ -78,7 +86,13 @@ class FaltaBarChart(tk.Frame):
         ax.yaxis.grid(True, color=BORDER, linewidth=0.6, zorder=0)
         ax.set_axisbelow(True)
 
+    def _update_fig_bg(self):
+        """Sync matplotlib figure/canvas background with the current BG_CARD token."""
+        self._fig.set_facecolor(BG_CARD)
+        self._mpl.get_tk_widget().config(bg=BG_CARD)
+
     def _draw_empty(self):
+        self._update_fig_bg()
         for ax, title in [
             (self._ax_t, "Faltas por Turma"),
             (self._ax_m, "Faltas por Matéria"),
@@ -119,14 +133,22 @@ class FaltaBarChart(tk.Frame):
             self._draw_empty()
             return
 
-        absent: set = {f.professor for f in faltas}
+        # CORREÇÃO BUG 1: usa (professor, dia_completo) em vez de apenas professor.
+        # Assim só contamos as aulas do dia exato da falta, não todas as aulas do
+        # professor na semana, o que gerava contagens infladas e "aleatórias".
+        absent_slots: set = set()
+        for f in faltas:
+            full_day = _ABBR_TO_FULL.get(f.dia_semana, f.dia_semana)
+            absent_slots.add((f.professor, full_day))
+
         turma_cnt:   Dict[str, int] = {}
         materia_cnt: Dict[str, int] = {}
         for aula in grade:
-            if aula.professor in absent:
+            if (aula.professor, aula.dia) in absent_slots:
                 turma_cnt[aula.turma]        = turma_cnt.get(aula.turma, 0) + 1
                 materia_cnt[aula.disciplina] = materia_cnt.get(aula.disciplina, 0) + 1
 
+        self._update_fig_bg()
         self._bar(self._ax_t, turma_cnt,   "Faltas por Turma",    RED)
         self._bar(self._ax_m, materia_cnt, "Faltas por Matéria",  ORANGE)
         self._mpl.draw()
@@ -153,11 +175,6 @@ class GradeHeatmap(tk.Frame):
         "Quinta":  "Qui", "Sexta": "Sex",
     }
 
-    _ABSENT_BG   = "#FEE2E2"
-    _OK_BG       = "#F0FDF4"
-    _FREE_BG     = "#F9FAFB"
-    _HEADER_BG   = "#F3F4F6"
-
     def __init__(self, parent):
         super().__init__(parent, bg=BG_CARD)
         self._canvas = tk.Canvas(
@@ -171,14 +188,19 @@ class GradeHeatmap(tk.Frame):
 
     def refresh(self, faltas: List[Falta], grade: List[Aula]):
         """Rebuild grid data and redraw."""
-        absent = {f.professor for f in faltas}
-        self._grid = {d: {} for d in self.DAYS}
+        # CORREÇÃO BUG 1 (heatmap): mesma lógica do FaltaBarChart — filtra por
+        # (professor, dia_completo) para só colorir a célula do dia real da falta.
+        absent_slots: set = set()
+        for f in faltas:
+            full_day = _ABBR_TO_FULL.get(f.dia_semana, f.dia_semana)
+            absent_slots.add((f.professor, full_day))
 
+        self._grid = {d: {} for d in self.DAYS}
         for aula in grade:
             day = self._DAY_MAP.get(aula.dia, aula.dia[:3])
             if day not in self._grid:
                 continue
-            if aula.professor in absent:
+            if (aula.professor, aula.dia) in absent_slots:
                 self._grid[day][aula.horario] = "absent"
             elif self._grid[day].get(aula.horario) != "absent":
                 self._grid[day][aula.horario] = "ok"
@@ -189,6 +211,7 @@ class GradeHeatmap(tk.Frame):
 
     def _redraw(self):
         self._canvas.delete("all")
+        self._canvas.config(bg=BG_CARD)
         w = self._canvas.winfo_width()
         h = self._canvas.winfo_height()
         if w < 20 or h < 20:
@@ -199,13 +222,16 @@ class GradeHeatmap(tk.Frame):
         cw   = w / cols
         rh   = h / rows
 
+        # Lê módulo globals a cada redraw — assim picks up dark/light após o toggle.
+        header_bg = BG_PAGE
+        absent_bg, absent_fg = RED_BG,   RED
+        ok_bg,     ok_fg     = GREEN_BG, GREEN
+        free_bg,   free_fg   = BG_CARD,  TEXT_MID
+
         # Column headers (days)
         for ci, day in enumerate(self.DAYS, 1):
             x0 = ci * cw
-            self._canvas.create_rectangle(
-                x0, 0, x0 + cw, rh,
-                fill=self._HEADER_BG, outline=BORDER,
-            )
+            self._canvas.create_rectangle(x0, 0, x0 + cw, rh, fill=header_bg, outline=BORDER)
             self._canvas.create_text(
                 x0 + cw / 2, rh / 2,
                 text=day, font=("Segoe UI", 8, "bold"), fill=TEXT_MID,
@@ -214,17 +240,14 @@ class GradeHeatmap(tk.Frame):
         # Row headers (periods)
         for ri, period in enumerate(self.PERIODS, 1):
             y0 = ri * rh
-            self._canvas.create_rectangle(
-                0, y0, cw, y0 + rh,
-                fill=self._HEADER_BG, outline=BORDER,
-            )
+            self._canvas.create_rectangle(0, y0, cw, y0 + rh, fill=header_bg, outline=BORDER)
             self._canvas.create_text(
                 cw / 2, y0 + rh / 2,
                 text=f"{period}°", font=("Segoe UI", 8), fill=TEXT_MID,
             )
 
         # Top-left corner cell
-        self._canvas.create_rectangle(0, 0, cw, rh, fill=self._HEADER_BG, outline=BORDER)
+        self._canvas.create_rectangle(0, 0, cw, rh, fill=header_bg, outline=BORDER)
         self._canvas.create_text(
             cw / 2, rh / 2, text="H \\ Dia",
             font=("Segoe UI", 7), fill=TEXT_MID,
@@ -235,11 +258,11 @@ class GradeHeatmap(tk.Frame):
             for ri, period in enumerate(self.PERIODS, 1):
                 status = self._grid.get(day, {}).get(period, "free")
                 if status == "absent":
-                    fill, label, fg = self._ABSENT_BG, "FALTA", RED
+                    fill, label, fg = absent_bg, "FALTA", absent_fg
                 elif status == "ok":
-                    fill, label, fg = self._OK_BG, "✓", GREEN
+                    fill, label, fg = ok_bg, "✓", ok_fg
                 else:
-                    fill, label, fg = self._FREE_BG, "—", TEXT_MID
+                    fill, label, fg = free_bg, "—", free_fg
 
                 x0, y0 = ci * cw, ri * rh
                 self._canvas.create_rectangle(
