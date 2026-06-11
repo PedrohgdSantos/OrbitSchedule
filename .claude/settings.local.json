@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:www.figma.com)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(python -c \"import ast, sys; files=['src/animations.py','src/charts.py','src/app.py','src/absence_manager.py']; [print\\(f'OK: {f}'\\) or ast.parse\\(open\\(f,encoding='utf-8'\\).read\\(\\)\\) for f in files]; print\\('All syntax checks passed.'\\)\")",
+      "Bash(python -c \"from src.animations import fade_page, count_up, lerp_color; from src.charts import FaltaBarChart, GradeHeatmap; print\\('Imports OK'\\)\")",
+      "Bash(python -c \"import matplotlib; print\\('matplotlib:', matplotlib.__version__\\)\")",
+      "Bash(pip install *)",
+      "Bash(python -c \"import matplotlib; print\\('matplotlib', matplotlib.__version__, 'OK'\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   }
 }

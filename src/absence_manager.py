@@ -7,6 +7,8 @@ import os
 
 from .models import Falta, Aula
 from .data_handler import DataHandler
+from .charts import FaltaBarChart
+from .substitution import find_substitutes, affected_classes, SubstituteOption
 
 # ── Design tokens ──────────────────────────────────────────────────────────────
 BG_PAGE    = "#F5F6FA"
@@ -81,6 +83,12 @@ class AbsenceManager(tk.Frame):
     def _save(self):
         DataHandler.save_faltas(self.file_path, self.faltas)
 
+    def refresh_charts(self):
+        """Update the inline bar chart. Called locally and by the dashboard."""
+        grade = getattr(self.controller, "grade_gerada", [])
+        if hasattr(self, "_chart"):
+            self._chart.refresh(self.faltas, grade)
+
     # ── UI construction ────────────────────────────────────────────────────────
 
     def _build_ui(self):
@@ -132,6 +140,13 @@ class AbsenceManager(tk.Frame):
             vl = tk.Label(c, text=val, bg=BG_CARD, fg=TEXT_DARK, font=(FONT, 26, "bold"))
             vl.pack(anchor="w", padx=16, pady=(0, 18))
             self._dash[title] = vl
+
+        # ── Faltas bar charts (inline, updates with each registration) ────────
+        _sec(inner, "Análise de Faltas", PAD, top_pad=22)
+        chart_card = _card(inner)
+        chart_card.pack(fill="x", padx=PAD, pady=(0, 4))
+        self._chart = FaltaBarChart(chart_card)
+        self._chart.pack(fill="both", expand=True)
 
         # ── Status banner ─────────────────────────────────────────────────────
         self._banner_frame = tk.Frame(inner, bg=GREEN_BG)
@@ -231,6 +246,7 @@ class AbsenceManager(tk.Frame):
 
         self.report_tree.tag_configure("present", background=GREEN_BG, foreground=GREEN)
         self.report_tree.tag_configure("absent",  background=RED_BG,   foreground=RED)
+        self.report_tree.tag_configure("covered", background=AMBER_BG, foreground=AMBER)
         self.report_tree.tag_configure("unknown", background=BG_CARD,  foreground=TEXT_MID)
 
         self.report_tree.pack(side="left", fill="both", expand=True)
@@ -245,8 +261,8 @@ class AbsenceManager(tk.Frame):
         falta_card.pack(fill="x", padx=PAD)
 
         falta_cols = [
-            ("Data", 90), ("Professor", 150), ("Dia", 55),
-            ("Bloco", 68), ("Motivo", 200), ("Registrado em", 140),
+            ("Data", 90), ("Professor", 150), ("Dia", 50),
+            ("Bloco", 65), ("Motivo", 180), ("Substituto", 150), ("Registrado em", 130),
         ]
         self.faltas_tree = ttk.Treeview(
             falta_card,
@@ -257,7 +273,8 @@ class AbsenceManager(tk.Frame):
             self.faltas_tree.heading(col, text=col)
             self.faltas_tree.column(col, width=w)
 
-        self.faltas_tree.tag_configure("falta", background=RED_BG, foreground=RED)
+        self.faltas_tree.tag_configure("falta",    background=RED_BG,   foreground=RED)
+        self.faltas_tree.tag_configure("coberta",  background=AMBER_BG, foreground=AMBER)
 
         self.faltas_tree.pack(side="left", fill="both", expand=True)
         f_vsb = ttk.Scrollbar(falta_card, orient="vertical", command=self.faltas_tree.yview)
@@ -266,7 +283,8 @@ class AbsenceManager(tk.Frame):
 
         del_row = tk.Frame(inner, bg=BG_PAGE)
         del_row.pack(fill="x", padx=PAD, pady=(10, 0))
-        _btn(del_row, "Remover Falta Selecionada", self._delete_falta, danger=True).pack(side="left")
+        _btn(del_row, "Remover Falta Selecionada", self._delete_falta, danger=True).pack(side="left", padx=(0, 10))
+        _btn(del_row, "👤  Atribuir Substituto", self._atribuir_substituto_selecionado).pack(side="left")
 
         # ── Export ────────────────────────────────────────────────────────────
         _sec(inner, "Exportar para Secretaria", PAD, top_pad=28)
@@ -375,17 +393,28 @@ class AbsenceManager(tk.Frame):
 
         filter_str  = self.filter_entry.get().strip()
         filter_date = self._parse_date(filter_str)
-        absent_profs = (
-            {f.professor for f in self.faltas if f.data == filter_date.strftime("%d/%m/%Y")}
-            if filter_date else set()
-        )
 
-        gap_count = 0
+        # Build maps for the filtered date: absent professor → substituto name
+        absent_map: Dict[str, str] = {}
+        if filter_date:
+            date_str = filter_date.strftime("%d/%m/%Y")
+            for f in self.faltas:
+                if f.data == date_str:
+                    absent_map[f.professor] = f.substituto  # "" when not yet assigned
+
+        gap_count     = 0
+        covered_count = 0
         for aula in grade:
-            if aula.professor in absent_profs:
-                tag    = "absent"
-                status = "⚠️ FALTA"
-                gap_count += 1
+            if aula.professor in absent_map:
+                sub = absent_map[aula.professor]
+                if sub:
+                    tag    = "covered"
+                    status = f"🔄 {sub}"
+                    covered_count += 1
+                else:
+                    tag    = "absent"
+                    status = "⚠️ FALTA"
+                    gap_count += 1
             elif filter_date:
                 tag    = "present"
                 status = "✅ Presente"
@@ -399,20 +428,26 @@ class AbsenceManager(tk.Frame):
             ), tags=(tag,))
 
         # Update banner text to reflect report filter
-        if filter_date and gap_count == 0:
+        if filter_date and gap_count == 0 and covered_count == 0:
             self._banner_frame.config(bg=GREEN_BG, highlightbackground=GREEN)
             self._banner_lbl.config(
                 bg=GREEN_BG, fg=GREEN,
                 text=f"✅  Está tudo certo — nenhuma falta em {filter_str}.",
             )
+        elif filter_date and gap_count == 0 and covered_count > 0:
+            self._banner_frame.config(bg=AMBER_BG, highlightbackground=AMBER)
+            self._banner_lbl.config(
+                bg=AMBER_BG, fg=AMBER,
+                text=f"🔄  {covered_count} aula(s) com substituto atribuído em {filter_str}.",
+            )
         elif filter_date and gap_count > 0:
             self._banner_frame.config(bg=RED_BG, highlightbackground=RED)
+            sem = f"{gap_count} sem cobertura"
+            com = f"{covered_count} com substituto" if covered_count else ""
+            partes = " · ".join(filter(None, [sem, com]))
             self._banner_lbl.config(
                 bg=RED_BG, fg=RED,
-                text=(
-                    f"⚠️  {gap_count} aula(s) sem cobertura em {filter_str} "
-                    f"— linhas em vermelho indicam os horários vagos."
-                ),
+                text=f"⚠️  Faltas em {filter_str}: {partes}.",
             )
 
     # ── Faltas treeview ────────────────────────────────────────────────────────
@@ -420,10 +455,13 @@ class AbsenceManager(tk.Frame):
     def _refresh_faltas_tree(self):
         self.faltas_tree.delete(*self.faltas_tree.get_children())
         for f in sorted(self.faltas, key=lambda x: x.data, reverse=True):
+            has_sub = bool(f.substituto)
+            tag     = "coberta" if has_sub else "falta"
+            sub_lbl = f"✅ {f.substituto}" if has_sub else "—  sem cobertura"
             self.faltas_tree.insert("", "end", values=(
                 f.data, f.professor, f.dia_semana,
-                f.bloco, f.motivo, f.registrado_em,
-            ), tags=("falta",))
+                f.bloco, f.motivo, sub_lbl, f.registrado_em,
+            ), tags=(tag,))
 
     # ── CRUD ───────────────────────────────────────────────────────────────────
 
@@ -451,7 +489,7 @@ class AbsenceManager(tk.Frame):
         bloco   = aulas_prof[0].bloco    if aulas_prof else "—"
         horario = str(aulas_prof[0].horario) if aulas_prof else "—"
 
-        self.faltas.append(Falta(
+        nova_falta = Falta(
             data=data_str,
             professor=professor,
             dia_semana=dia_semana,
@@ -459,13 +497,155 @@ class AbsenceManager(tk.Frame):
             horario=horario,
             motivo=motivo or "Não informado",
             registrado_em=datetime.now().strftime("%d/%m/%Y %H:%M"),
-        ))
+        )
+        self.faltas.append(nova_falta)
         self._save()
         self._refresh_faltas_tree()
         self._refresh_report()
         self._update_dashboard()
+        self.refresh_charts()
+        self.controller.refresh_charts()
         self.motivo_entry.delete(0, tk.END)
-        messagebox.showinfo("Registrado", f"Falta de '{professor}' em {data_str} registrada.")
+        # Abrir dialog de substituição automaticamente
+        self._open_substituto_dialog(nova_falta)
+
+    def _atribuir_substituto_selecionado(self):
+        """Open the substitution dialog for whichever falta row is selected."""
+        item = self.faltas_tree.focus()
+        if not item:
+            messagebox.showwarning("Aviso", "Selecione uma falta na tabela.")
+            return
+        v        = self.faltas_tree.item(item, "values")
+        data_v   = v[0]
+        prof_v   = v[1]
+        falta = next(
+            (f for f in self.faltas if f.data == data_v and f.professor == prof_v),
+            None,
+        )
+        if falta:
+            self._open_substituto_dialog(falta)
+
+    def _open_substituto_dialog(self, falta: Falta):
+        """
+        Modal dialog that shows affected classes and ranked substitute candidates.
+        On confirmation, updates falta.substituto, persists, and refreshes the UI.
+        """
+        grade       = getattr(self.controller, "grade_gerada", [])
+        professores = getattr(self.controller.professor_manager, "professores", []) \
+            if hasattr(self.controller, "professor_manager") else []
+
+        affected = affected_classes(falta, grade)
+        options  = find_substitutes(falta, grade, professores)
+
+        dlg = tk.Toplevel(self)
+        dlg.title("Cobertura de Aulas")
+        dlg.geometry("600x480")
+        dlg.resizable(False, False)
+        dlg.configure(bg=BG_PAGE)
+        dlg.grab_set()
+        dlg.focus_set()
+
+        PAD = 24
+
+        # ── Header ─────────────────────────────────────────────────────────────
+        hdr = tk.Frame(dlg, bg=BG_PAGE)
+        hdr.pack(fill="x", padx=PAD, pady=(22, 0))
+        tk.Label(hdr, text="Cobertura de Aulas", bg=BG_PAGE, fg="#111827",
+                 font=(FONT, 16, "bold")).pack(anchor="w")
+        tk.Label(
+            hdr,
+            text=f"Professor ausente: {falta.professor}   ·   {falta.data} ({falta.dia_semana})",
+            bg=BG_PAGE, fg=TEXT_MID, font=(FONT, 10),
+        ).pack(anchor="w", pady=(4, 0))
+
+        tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(14, 0))
+
+        # ── Affected classes ───────────────────────────────────────────────────
+        aff_lbl = f"{len(affected)} aula(s) afetada(s)" if affected else "Nenhuma aula desta data encontrada na grade"
+        tk.Label(dlg, text=aff_lbl, bg=BG_PAGE, fg="#111827",
+                 font=(FONT, 10, "bold")).pack(anchor="w", padx=PAD, pady=(12, 4))
+
+        if affected:
+            aff_card = tk.Frame(dlg, bg=RED_BG)
+            aff_card.config(highlightbackground=RED, highlightthickness=1)
+            aff_card.pack(fill="x", padx=PAD)
+            for a in affected:
+                tk.Label(
+                    aff_card,
+                    text=f"  {a.horario}° Horário  ·  {a.bloco}  ·  {a.turma}  ·  {a.disciplina}  ·  {a.sala}",
+                    bg=RED_BG, fg=RED, font=(FONT, 9), anchor="w",
+                ).pack(fill="x", padx=8, pady=2)
+
+        tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(14, 0))
+
+        # ── Candidates ─────────────────────────────────────────────────────────
+        if options:
+            tk.Label(dlg, text="Substitutos disponíveis:", bg=BG_PAGE, fg="#111827",
+                     font=(FONT, 10, "bold")).pack(anchor="w", padx=PAD, pady=(12, 4))
+
+            cand_frame = tk.Frame(dlg, bg=BG_CARD)
+            cand_frame.config(highlightbackground=BORDER, highlightthickness=1)
+            cand_frame.pack(fill="x", padx=PAD)
+
+            for opt in options[:5]:  # show at most 5 candidates
+                star  = "★" if opt.covers_all else "◎"
+                cover = "cobre todas as aulas" if opt.covers_all else f"cobre {opt.partial_count}/{len(affected)} aula(s)"
+                tk.Label(
+                    cand_frame,
+                    text=f"  {star}  {opt.professor.nome}   —   {cover}",
+                    bg=BG_CARD, fg=TEXT_DARK, font=(FONT, 9), anchor="w",
+                ).pack(fill="x", padx=8, pady=3)
+
+            # Combobox for final selection
+            sel_row = tk.Frame(dlg, bg=BG_PAGE)
+            sel_row.pack(fill="x", padx=PAD, pady=(14, 0))
+            tk.Label(sel_row, text="Atribuir substituto:", bg=BG_PAGE,
+                     fg=TEXT_MID, font=(FONT, 9)).pack(side="left", padx=(0, 10))
+
+            candidate_names = [o.professor.nome for o in options]
+            sel_var = tk.StringVar(value=candidate_names[0])
+            cb = ttk.Combobox(sel_row, values=candidate_names, textvariable=sel_var,
+                              state="readonly", width=30, font=(FONT, 10))
+            # Pre-select current substituto if already assigned
+            if falta.substituto and falta.substituto in candidate_names:
+                cb.set(falta.substituto)
+            cb.pack(side="left")
+
+        else:
+            tk.Label(
+                dlg,
+                text=(
+                    "⚠️  Nenhum professor disponível para cobrir estas aulas.\n\n"
+                    "Verifique se existe algum professor cadastrado com:\n"
+                    f"  • A mesma disciplina   • Disponível em {falta.dia_semana}-{falta.bloco}\n"
+                    "  • Sem conflito de horário nesse dia"
+                ),
+                bg=BG_PAGE, fg=AMBER, font=(FONT, 10), justify="left",
+            ).pack(anchor="w", padx=PAD, pady=(16, 0))
+            sel_var = None
+
+        # ── Buttons ────────────────────────────────────────────────────────────
+        tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(20, 0))
+        btn_row = tk.Frame(dlg, bg=BG_PAGE)
+        btn_row.pack(fill="x", padx=PAD, pady=(14, 22))
+
+        def _confirm():
+            chosen = sel_var.get().strip() if sel_var else ""
+            falta.substituto = chosen
+            self._save()
+            self._refresh_faltas_tree()
+            self._refresh_report()
+            self.controller.refresh_charts()
+            dlg.destroy()
+
+        def _skip():
+            falta.substituto = ""
+            self._save()
+            dlg.destroy()
+
+        if sel_var:
+            _btn(btn_row, "✓  Confirmar substituto", _confirm, success=True).pack(side="left", padx=(0, 10))
+        _btn(btn_row, "Registrar sem substituto", _skip).pack(side="left")
 
     def _delete_falta(self):
         item = self.faltas_tree.focus()
@@ -480,6 +660,8 @@ class AbsenceManager(tk.Frame):
             self._refresh_faltas_tree()
             self._refresh_report()
             self._update_dashboard()
+            self.refresh_charts()
+            self.controller.refresh_charts()
 
     # ── CSV Export ─────────────────────────────────────────────────────────────
 
@@ -506,7 +688,7 @@ class AbsenceManager(tk.Frame):
                     "Data", "Dia da Semana", "Bloco", "Horário",
                     "Professor Ausente", "Motivo",
                     "Turma(s) Afetada(s)", "Disciplina(s)", "Sala(s)",
-                    "Substituto (preencher)", "Observações",
+                    "Substituto", "Observações",
                 ])
                 for falta in sorted(self.faltas, key=lambda x: x.data):
                     aulas = [a for a in grade if a.professor == falta.professor]
@@ -517,7 +699,7 @@ class AbsenceManager(tk.Frame):
                         falta.data, falta.dia_semana, falta.bloco, falta.horario,
                         falta.professor, falta.motivo,
                         turmas, discs, salas,
-                        "", "",
+                        falta.substituto or "A preencher", "",
                     ])
             messagebox.showinfo("Exportado", f"Relatório exportado:\n{path}")
         except Exception as e:
@@ -538,21 +720,29 @@ class AbsenceManager(tk.Frame):
         if not path:
             return
 
-        today_str    = date.today().strftime("%d/%m/%Y")
-        absent_profs = {f.professor for f in self.faltas if f.data == today_str}
+        today_str   = date.today().strftime("%d/%m/%Y")
+        # Map: professor → substituto (or "" when unassigned)
+        absent_map  = {f.professor: f.substituto for f in self.faltas if f.data == today_str}
 
         try:
             with open(path, "w", encoding="utf-8-sig", newline="") as f:
                 writer = csv.writer(f, delimiter=";")
                 writer.writerow([
                     "Dia", "Horário", "Bloco", "Turma",
-                    "Disciplina", "Professor", "Sala", "Status",
+                    "Disciplina", "Professor", "Sala", "Status", "Substituto",
                 ])
                 for aula in grade:
-                    status = "FALTA - SEM COBERTURA" if aula.professor in absent_profs else "Presente"
+                    if aula.professor in absent_map:
+                        sub = absent_map[aula.professor]
+                        status = f"COBERTO — {sub}" if sub else "FALTA - SEM COBERTURA"
+                        substituto_col = sub or "—"
+                    else:
+                        status         = "Presente"
+                        substituto_col = "—"
                     writer.writerow([
                         aula.dia, f"{aula.horario}º Horário", aula.bloco,
-                        aula.turma, aula.disciplina, aula.professor, aula.sala, status,
+                        aula.turma, aula.disciplina, aula.professor, aula.sala,
+                        status, substituto_col,
                     ])
             messagebox.showinfo("Exportado", f"Grade validada exportada:\n{path}")
         except Exception as e:

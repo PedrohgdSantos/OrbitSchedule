@@ -30,10 +30,11 @@ class Falta:
     data: str           # "11/06/2024"
     professor: str
     dia_semana: str     # "Seg", "Ter", etc.
-    bloco: str          # "Manhã", "Tarde", "Noite"
+    bloco: str          # "Manhã", "Noite"
     horario: str        # "1" ou "—" se desconhecido
     motivo: str
     registrado_em: str  # "11/06/2024 14:30"
+    substituto: str = ""  # Nome do professor substituto atribuído; "" = sem cobertura
 
 # Define a classe Aula, que representa uma aula agendada.
 @dataclass

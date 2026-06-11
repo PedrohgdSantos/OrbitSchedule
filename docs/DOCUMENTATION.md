@@ -2,16 +2,17 @@
 
 ## Visão Geral
 
-**OrbitSchedule** é uma aplicação desktop em Python (Tkinter) para gestão e geração automática de grades horárias escolares, com módulo integrado de controle de faltas de professores.
+**OrbitSchedule** é uma aplicação desktop em Python (Tkinter) para gestão e geração automática de grades horárias escolares. Inclui módulo completo de controle de faltas com substituição automática de professores, gráficos de análise integrados via Matplotlib, animações de transição e exportação de relatórios em CSV compatível com Excel.
 
-### Funcionalidades principais
+### Funcionalidades
 
 - Cadastro de professores, turmas e salas com persistência em CSV
 - Geração automática de grade horária com detecção de conflitos
-- Exportação da grade para CSV compatível com Excel
-- Registro e acompanhamento de faltas de professores
-- Relatório de validação com destaque visual em vermelho para horários vagos
-- Exportação de relatório de faltas para a Secretaria
+- Módulo de faltas: registro, relatório visual, substituição automática, exportação
+- Gráficos de análise (Faltas por Turma, Faltas por Matéria, Mapa de Presença)
+- Animações: fade de página, hover na sidebar, count-up nos metric cards
+- Alertas tipados com blocos coloridos por severidade
+- Exportação CSV com UTF-8-BOM e separador `;` (compatível com Excel PT-BR)
 
 ---
 
@@ -19,22 +20,25 @@
 
 ```
 OrbitSchedule/
-├── main.py                  # Ponto de entrada da aplicação
+├── main.py                  # Ponto de entrada
 ├── src/
-│   ├── app.py               # Shell principal: sidebar + roteamento de páginas
+│   ├── app.py               # Shell: sidebar, roteamento, dashboard
 │   ├── models.py            # Dataclasses: Professor, Turma, Sala, Aula, Falta
-│   ├── data_handler.py      # Leitura e escrita de todos os arquivos CSV
-│   ├── scheduler.py         # Algoritmo de geração da grade horária
-│   ├── professor_manager.py # Página de gerenciamento de professores
-│   ├── turma_manager.py     # Página de gerenciamento de turmas
-│   ├── sala_manager.py      # Página de gerenciamento de salas
-│   ├── absence_manager.py   # Página de gestão de faltas e relatórios
-│   └── rounded_frame.py     # Componente visual de card com bordas arredondadas
+│   ├── data_handler.py      # I/O de todos os arquivos CSV
+│   ├── scheduler.py         # Algoritmo de geração da grade
+│   ├── animations.py        # Utilitários de animação (fade, count-up, lerp)
+│   ├── charts.py            # Widgets de gráficos (Matplotlib + Canvas)
+│   ├── substitution.py      # Algoritmo de busca de professores substitutos
+│   ├── professor_manager.py # Página CRUD de professores
+│   ├── turma_manager.py     # Página CRUD de turmas
+│   ├── sala_manager.py      # Página CRUD de salas
+│   ├── absence_manager.py   # Página de gestão de faltas
+│   └── rounded_frame.py     # Componente legado (não usado nas páginas atuais)
 ├── data/
 │   ├── professores.csv
 │   ├── turmas.csv
 │   ├── salas.csv
-│   └── faltas.csv           # Criado automaticamente ao registrar a primeira falta
+│   └── faltas.csv           # Criado automaticamente no primeiro registro
 └── docs/
     └── DOCUMENTATION.md
 ```
@@ -43,86 +47,209 @@ OrbitSchedule/
 
 ## Design System
 
-A interface segue o padrão **Designo LMS Dashboard** (tema claro).
+Interface no padrão **Designo LMS Dashboard** — tema claro, sidebar branca, acento laranja.
 
 ### Paleta de cores
 
-| Token        | Hex       | Uso                                      |
-|--------------|-----------|------------------------------------------|
-| `BG_PAGE`    | `#F5F6FA` | Fundo geral das páginas                  |
-| `BG_SIDEBAR` | `#FFFFFF` | Fundo da sidebar                         |
-| `BG_CARD`    | `#FFFFFF` | Fundo dos cards e tabelas                |
-| `ORANGE`     | `#F97316` | Cor primária: botões, nav ativo, logo    |
-| `ORANGE_DIM` | `#FFF7ED` | Hover de nav e ícones de métricas        |
-| `TEXT_DARK`  | `#111827` | Texto principal                          |
-| `TEXT_MID`   | `#6B7280` | Labels secundários e subtítulos          |
-| `BORDER`     | `#E5E7EB` | Bordas de cards e separadores            |
-| `GREEN`      | `#16A34A` | Status "presente" / sucesso              |
-| `GREEN_BG`   | `#DCFCE7` | Fundo do banner "está tudo certo"        |
-| `RED`        | `#DC2626` | Faltas / erros / botão deletar           |
-| `RED_BG`     | `#FEE2E2` | Highlight de linhas com falta            |
-| `AMBER`      | `#D97706` | Indicador de alertas da semana           |
+| Token        | Hex       | Uso                                         |
+|--------------|-----------|---------------------------------------------|
+| `BG_PAGE`    | `#F5F6FA` | Fundo geral das páginas                     |
+| `BG_SIDEBAR` | `#FFFFFF` | Fundo da sidebar                            |
+| `BG_CARD`    | `#FFFFFF` | Fundo dos cards e tabelas                   |
+| `ORANGE`     | `#F97316` | Cor primária: botões, nav ativo, logo       |
+| `ORANGE_DIM` | `#FFF7ED` | Hover de nav e ícones de métricas           |
+| `TEXT_DARK`  | `#111827` | Texto principal                             |
+| `TEXT_MID`   | `#6B7280` | Labels secundários e subtítulos             |
+| `TEXT_LIGHT` | `#9CA3AF` | Textos de placeholder                       |
+| `BORDER`     | `#E5E7EB` | Bordas de cards e separadores               |
+| `GREEN`      | `#16A34A` | Status "presente" / sucesso                 |
+| `GREEN_BG`   | `#DCFCE7` | Fundo de banner/linha "OK"                  |
+| `RED`        | `#DC2626` | Faltas / erros / botão deletar              |
+| `RED_BG`     | `#FEE2E2` | Fundo de linha/banner com falta             |
+| `AMBER`      | `#D97706` | Avisos parciais / substituto atribuído      |
+| `AMBER_BG`   | `#FEF3C7` | Fundo de linha coberta por substituto       |
+| `BLUE`       | `#2563EB` | Ícone de Professores / bloco info           |
+| `BLUE_BG`    | `#DBEAFE` | Fundo de bloco informativo                  |
 
 ### Layout
 
-A janela é dividida em duas colunas fixas:
+A janela é dividida em duas colunas:
 
-- **Sidebar** (220 px, fixa): logo + itens de navegação
+- **Sidebar** (220 px, fixa): logo + itens de navegação animados
 - **Área de conteúdo** (expansível): página ativa + barra de status no rodapé
 
-A navegação é feita por clique nos itens da sidebar. O item ativo recebe fundo laranja sólido; os inativos respondem a hover com `ORANGE_DIM`.
+Cards são `tk.Frame` com `highlightbackground=BORDER, highlightthickness=1`.
 
 ---
 
 ## Módulos
 
-### `main.py`
+### `src/animations.py`
 
-Ponto de entrada. Instancia `tk.Tk` e `SchedulerApp`, então inicia o loop de eventos.
+Utilitários de animação baseados em `root.after()`. Sem dependências externas.
 
-```python
-python main.py
+#### `lerp_color(src, dst, t) → str`
+
+Interpolação linear entre duas cores hexadecimais. `t=0` retorna `src`, `t=1` retorna `dst`. Usada internamente pelo hover da sidebar.
+
+#### `fade_page(root, callback, steps=10, delay_ms=14)`
+
+Anima a opacidade da janela de `1.0 → 0.55 → 1.0`. A `callback` (troca de página) é executada no ponto mais escuro. Duração total ≈ 280 ms.
+
 ```
+root.attributes("-alpha", ...)  ← API usada
+```
+
+Chamada em `SchedulerApp._navigate()` a cada troca de página.
+
+#### `count_up(label, target, root, duration_ms=650)`
+
+Anima o texto de um `tk.Label` do valor numérico atual até `target`. Calcula número de passos proporcional à diferença para que grandes saltos não sejam lentos. Usada nos metric cards do dashboard quando a grade é gerada ou limpa.
+
+#### `bind_hover(root, widgets, normal_bg, hover_bg, steps, delay_ms, guard_fn)`
+
+Vincula `<Enter>`/`<Leave>` a uma animação de interpolação de cor em todos os widgets da lista. O parâmetro `guard_fn` permite suprimir a animação quando o widget está em estado "ativo" (ex: item selecionado na sidebar).
+
+---
+
+### `src/charts.py`
+
+Widgets de visualização embutidos em `tk.Frame`.
+
+#### `FaltaBarChart(parent)`
+
+Dois gráficos de barras lado a lado via **Matplotlib** (`FigureCanvasTkAgg`):
+
+- **Esquerda** — Faltas por Turma: conta aulas da grade cujo professor está ausente, agrupadas por turma. Barras em vermelho.
+- **Direita** — Faltas por Matéria: mesma lógica, agrupada por disciplina. Barras em laranja.
+
+Exibe placeholder "Sem dados" quando não há faltas ou grade. Se `matplotlib` não estiver instalado, mostra label com instrução de instalação.
+
+**API:** `chart.refresh(faltas: List[Falta], grade: List[Aula])` — pode ser chamado a qualquer momento para atualizar os dados.
+
+#### `GradeHeatmap(parent)`
+
+Grid de horários desenhado com `tk.Canvas` puro (sem dependência externa).
+
+- Colunas = dias da semana (Seg–Sex)
+- Linhas = horários (1°–6°)
+- Célula vermelha (`#FEE2E2`) — professor ausente naquele slot
+- Célula verde (`#F0FDF4`) — slot ocupado, professor presente
+- Célula cinza (`#F9FAFB`) — nenhuma aula agendada
+
+Redesenhado via `_redraw()` a cada `<Configure>` (redimensionamento) e a cada chamada de `refresh()`.
+
+**API:** `heatmap.refresh(faltas, grade)` — reconstrói o grid interno e redesenha.
+
+Ambos os widgets estão presentes no Dashboard (seções "Análise de Faltas" e "Mapa de Presença") e o `FaltaBarChart` também aparece na página de Faltas.
+
+---
+
+### `src/substitution.py`
+
+Algoritmo de busca de professores substitutos. Sem UI — retorna dados estruturados.
+
+#### `SubstituteOption` (dataclass)
+
+| Campo           | Tipo            | Descrição                                        |
+|-----------------|-----------------|--------------------------------------------------|
+| `professor`     | `Professor`     | Candidato encontrado                             |
+| `covers`        | `List[Aula]`    | Aulas que este professor consegue cobrir         |
+| `covers_all`    | `bool`          | `True` se cobre todas as aulas do ausente        |
+| `partial_count` | `int`           | Número de aulas que consegue cobrir              |
+| `score`         | `float`         | Pontuação para ranking                           |
+
+#### `affected_classes(falta, grade) → List[Aula]`
+
+Retorna todas as aulas da grade que pertencem ao professor ausente no dia da falta. Converte a abreviação (`falta.dia_semana = "Seg"`) para o nome completo (`"Segunda"`) para comparar com `aula.dia`.
+
+#### `find_substitutes(falta, grade, professores) → List[SubstituteOption]`
+
+Busca candidatos usando as mesmas regras do `Scheduler`:
+
+1. O candidato deve lecionar a mesma disciplina da aula afetada
+2. Deve ter disponibilidade no formato `"Dia-Bloco"` correspondente (ex: `"Segunda-Manhã"`)
+3. Não pode já estar ocupado naquele `(dia, horario)` na grade
+
+**Ranking:** candidatos que cobrem todas as aulas (`covers_all=True`) vêm primeiro. Entre empatados, menor carga de aulas atribuídas tem prioridade (score mais alto).
+
+Retorna lista vazia se nenhum professor puder cobrir ao menos uma aula.
 
 ---
 
 ### `src/app.py` — `SchedulerApp`
 
-Shell da aplicação. Responsável por:
+Shell da aplicação. Gerencia layout, navegação, dashboard e orquestração entre módulos.
 
-- Configurar todos os estilos TTK globais via `_configure_ttk_styles()`
-- Montar o layout de duas colunas (`_build_shell()`)
-- Construir a sidebar com navegação (`_build_sidebar()`)
-- Instanciar e registrar todas as páginas (`_build_pages()`)
-- Roteamento: `_navigate(page_key)` exibe a página selecionada e atualiza o estado visual da sidebar
+#### Construção
 
-**Páginas registradas:**
+```
+__init__
+  └─ _configure_ttk_styles()   → estilos TTK globais
+  └─ _build_shell()            → sidebar + área de conteúdo + barra de status
+  └─ _build_sidebar()          → logo + nav items com hover animado
+  └─ _build_pages()            → instancia managers e registra páginas
+  └─ update_dashboard_summary()
+  └─ _navigate("dashboard")
+```
 
-| `page_key`   | Classe              | Atributo             |
-|--------------|---------------------|----------------------|
-| `dashboard`  | *(interno)*         | —                    |
-| `professores`| `ProfessorManager`  | `professor_manager`  |
-| `turmas`     | `TurmaManager`      | `turma_manager`      |
-| `salas`      | `SalaManager`       | `sala_manager`       |
-| `faltas`     | `AbsenceManager`    | `absence_manager`    |
+#### Navegação com fade
 
-**Dashboard (página inicial):**
+```python
+def _navigate(self, page_key):
+    def _switch():   # pack/pack_forget + atualiza cores da sidebar
+        ...
+    fade_page(self.root, _switch)   # ← animação via animations.py
+```
 
-- 4 metric cards: Professores, Turmas, Salas, Aulas geradas
-- Botões de ação: Gerar Grade, Exportar CSV, Limpar Grade
-- Área de alertas do algoritmo
-- Treeview com a grade gerada (linhas alternadas)
+#### Hover animado na sidebar
 
-**Métodos públicos relevantes:**
+`_nav_hover(key, row, icon, text, entering)` usa `lerp_color` em 6 passos de 14 ms para interpolar `BG_SIDEBAR → ORANGE_DIM` (hover) ou o caminho inverso. Cancela a animação anterior do mesmo item antes de iniciar uma nova.
 
-| Método                    | Descrição                                              |
-|---------------------------|--------------------------------------------------------|
-| `gerar_grade()`           | Executa o `Scheduler` e popula a Treeview da grade     |
-| `exportar_grade()`        | Abre diálogo e chama `DataHandler.save_grade()`        |
-| `clear_grade()`           | Limpa grade da memória e da Treeview                   |
-| `update_dashboard_summary()` | Sincroniza os metric cards com os dados atuais      |
-| `set_status(message)`     | Atualiza o texto da barra de status inferior           |
-| `update_alert_text(msg)`  | Escreve na área de alertas do dashboard                |
+Itens ativos (fundo `ORANGE`) ignoram hover completamente.
+
+#### Dashboard
+
+| Seção                    | Descrição                                                               |
+|--------------------------|-------------------------------------------------------------------------|
+| Metric cards (×4)        | Professores, Turmas, Salas, Aulas — animados com `count_up()`           |
+| Botões de ação           | Gerar Grade, Exportar CSV, Limpar Grade — com hover `<Enter>`/`<Leave>` |
+| Alertas e Status         | Blocos individuais por severidade, borda dinâmica, badge de status       |
+| Análise de Faltas        | `FaltaBarChart` atualizado via `refresh_charts()`                       |
+| Mapa de Presença         | `GradeHeatmap` atualizado via `refresh_charts()`                        |
+| Grade Horária Gerada     | Treeview com linhas alternadas                                          |
+
+#### Alertas por bloco
+
+`update_alert_text(message, append)` divide a mensagem em linhas e classifica cada uma:
+
+| Prefixo / conteúdo     | Tipo      | Visual                            |
+|------------------------|-----------|-----------------------------------|
+| `✅` / "sucesso"       | `success` | Barra verde + fundo `GREEN_BG`    |
+| `❌` / "erro"          | `error`   | Barra vermelha + fundo `RED_BG`   |
+| `⚠️` / `•` / "falta"  | `warning` | Barra âmbar + fundo `AMBER_BG`    |
+| Outros                 | `info`    | Barra azul + fundo `BLUE_BG`      |
+
+Quando há qualquer erro ou aviso, a borda do card de alertas fica **vermelha (2 px)** e o badge mostra `● Há problemas`. Sem problemas, borda verde e badge `● OK`.
+
+#### `refresh_charts()`
+
+Método central que propaga os dados atuais (`absence_manager.faltas` + `grade_gerada`) para `_chart_faltas`, `_chart_heatmap` e `absence_manager.refresh_charts()`. Chamado após:
+- `gerar_grade()` — quando a grade muda
+- `clear_grade()` — quando a grade é limpa
+- `AbsenceManager._registrar_falta()` / `_delete_falta()` — quando faltas mudam
+
+#### Métodos públicos relevantes
+
+| Método                       | Descrição                                               |
+|------------------------------|---------------------------------------------------------|
+| `gerar_grade()`              | Executa `Scheduler`, popula Treeview, atualiza charts   |
+| `exportar_grade()`           | Abre diálogo, chama `DataHandler.save_grade()`          |
+| `clear_grade()`              | Limpa grade da memória e da Treeview                    |
+| `update_dashboard_summary()` | Atualiza metric cards com `count_up()`                  |
+| `set_status(msg)`            | Atualiza barra de status inferior                       |
+| `update_alert_text(msg)`     | Renderiza bloco de alerta tipado                        |
+| `refresh_charts()`           | Sincroniza todos os widgets de gráfico                  |
 
 ---
 
@@ -131,48 +258,51 @@ Shell da aplicação. Responsável por:
 Todos os modelos são `@dataclass`.
 
 #### `Professor`
-| Campo               | Tipo        | Descrição                                      |
-|---------------------|-------------|------------------------------------------------|
-| `nome`              | `str`       | Nome completo                                  |
-| `disciplinas`       | `List[str]` | Disciplinas que pode lecionar                  |
-| `disponibilidade`   | `List[str]` | Blocos disponíveis (ex: `Seg-Manhã`)           |
-| `aulas_atribuidas`  | `int`       | Contador usado pelo scheduler para priorização |
+| Campo              | Tipo        | Descrição                                               |
+|--------------------|-------------|---------------------------------------------------------|
+| `nome`             | `str`       | Nome completo                                           |
+| `disciplinas`      | `List[str]` | Disciplinas que pode lecionar                           |
+| `disponibilidade`  | `List[str]` | Blocos disponíveis no formato `"Dia-Bloco"` (ex: `"Segunda-Manhã"`) |
+| `aulas_atribuidas` | `int`       | Contador de aulas na grade; usado para priorização      |
 
 #### `Turma`
-| Campo               | Tipo        | Descrição                          |
-|---------------------|-------------|------------------------------------|
-| `nome`              | `str`       | Identificador da turma             |
-| `carga_horaria`     | `int`       | Total de aulas semanais            |
-| `disciplinas`       | `List[str]` | Disciplinas que a turma cursa      |
-| `sala_preferencial` | `str`       | Sala onde a turma será alocada     |
+| Campo              | Tipo        | Descrição                          |
+|--------------------|-------------|------------------------------------|
+| `nome`             | `str`       | Identificador da turma             |
+| `carga_horaria`    | `int`       | Total de aulas semanais            |
+| `disciplinas`      | `List[str]` | Disciplinas que a turma cursa      |
+| `sala_preferencial`| `str`       | Sala onde a turma será alocada     |
 
 #### `Sala`
-| Campo           | Tipo   | Descrição                    |
-|-----------------|--------|------------------------------|
-| `numero`        | `str`  | Identificador único da sala  |
-| `is_laboratorio`| `bool` | `True` se for laboratório    |
+| Campo            | Tipo   | Descrição                    |
+|------------------|--------|------------------------------|
+| `numero`         | `str`  | Identificador único da sala  |
+| `is_laboratorio` | `bool` | `True` se for laboratório    |
 
 #### `Aula`
-| Campo       | Tipo  | Descrição                            |
-|-------------|-------|--------------------------------------|
-| `dia`       | `str` | Dia da semana (ex: `Segunda`)        |
-| `horario`   | `int` | Número do horário no dia (1–4)       |
-| `bloco`     | `str` | `Manhã` ou `Noite`                   |
-| `turma`     | `str` | Nome da turma                        |
-| `disciplina`| `str` | Nome da disciplina                   |
-| `professor` | `str` | Nome do professor                    |
-| `sala`      | `str` | Número da sala                       |
+| Campo       | Tipo  | Descrição                          |
+|-------------|-------|------------------------------------|
+| `dia`       | `str` | Dia completo (ex: `"Segunda"`)     |
+| `horario`   | `int` | Número do horário no dia (1–4)     |
+| `bloco`     | `str` | `"Manhã"` ou `"Noite"`            |
+| `turma`     | `str` | Nome da turma                      |
+| `disciplina`| `str` | Nome da disciplina                 |
+| `professor` | `str` | Nome do professor                  |
+| `sala`      | `str` | Número da sala                     |
 
 #### `Falta`
-| Campo          | Tipo  | Descrição                                      |
-|----------------|-------|------------------------------------------------|
-| `data`         | `str` | Data no formato `DD/MM/AAAA`                   |
-| `professor`    | `str` | Nome do professor ausente                      |
-| `dia_semana`   | `str` | Abreviação do dia (ex: `Seg`)                  |
-| `bloco`        | `str` | Bloco inferido da grade (`Manhã`, `Noite`, `—`)|
-| `horario`      | `str` | Horário inferido da grade ou `—`               |
-| `motivo`       | `str` | Motivo informado ou `Não informado`            |
-| `registrado_em`| `str` | Timestamp do registro (`DD/MM/AAAA HH:MM`)     |
+| Campo          | Tipo  | Descrição                                          |
+|----------------|-------|----------------------------------------------------|
+| `data`         | `str` | Data no formato `DD/MM/AAAA`                       |
+| `professor`    | `str` | Nome do professor ausente                          |
+| `dia_semana`   | `str` | Abreviação (ex: `"Seg"`)                           |
+| `bloco`        | `str` | Bloco inferido da grade (`"Manhã"`, `"Noite"`, `"—"`) |
+| `horario`      | `str` | Horário inferido da grade ou `"—"`                 |
+| `motivo`       | `str` | Motivo informado ou `"Não informado"`              |
+| `registrado_em`| `str` | Timestamp do registro (`DD/MM/AAAA HH:MM`)         |
+| `substituto`   | `str` | Nome do professor substituto atribuído; `""` = sem cobertura |
+
+O campo `substituto` tem default `""` e é opcional — faltas antigas sem o campo são carregadas normalmente pelo `DataHandler`.
 
 ---
 
@@ -180,29 +310,29 @@ Todos os modelos são `@dataclass`.
 
 Todos os métodos são estáticos. Responsável por toda I/O de CSV.
 
-**Encoding:** todos os arquivos são lidos e gravados com `utf-8-sig` (UTF-8 com BOM), garantindo compatibilidade com Excel em qualquer sistema operacional.
+**Encoding:** `utf-8-sig` (UTF-8 com BOM) em leitura e escrita, garantindo compatibilidade com Excel em qualquer sistema operacional.
 
-**Separador de exportação:** os arquivos exportados ao usuário (`save_grade` e os exports de `AbsenceManager`) usam `;` como delimitador, padrão do Excel em locale português.
+**Separador:** arquivos internos usam `,`; exportações ao usuário usam `;` (padrão Excel PT-BR).
 
-| Método                              | Arquivo alvo          | Descrição                                    |
-|-------------------------------------|-----------------------|----------------------------------------------|
-| `_read_csv(path)`                   | qualquer              | Lê CSV, retorna `List[dict]`                 |
-| `_write_csv(path, data, fields)`    | qualquer              | Grava CSV interno (separador `,`)            |
-| `load_professores(path)`            | `professores.csv`     | Retorna `List[Professor]`                    |
-| `save_professores(path, lista)`     | `professores.csv`     | Persiste lista de professores                |
-| `load_turmas(path)`                 | `turmas.csv`          | Retorna `List[Turma]`                        |
-| `save_turmas(path, lista)`          | `turmas.csv`          | Persiste lista de turmas                     |
-| `load_salas(path)`                  | `salas.csv`           | Retorna `List[Sala]`                         |
-| `save_salas(path, lista)`           | `salas.csv`           | Persiste lista de salas                      |
-| `load_faltas(path)`                 | `faltas.csv`          | Retorna `List[Falta]`                        |
-| `save_faltas(path, lista)`          | `faltas.csv`          | Persiste lista de faltas                     |
-| `save_grade(path, grade)`           | arquivo escolhido     | Exporta grade com separador `;`, UTF-8-BOM   |
+| Método                           | Arquivo alvo      | Descrição                                  |
+|----------------------------------|-------------------|--------------------------------------------|
+| `_read_csv(path)`                | qualquer          | Lê CSV, retorna `List[dict]`               |
+| `_write_csv(path, data, fields)` | qualquer          | Grava CSV interno (separador `,`)          |
+| `load_professores(path)`         | `professores.csv` | Retorna `List[Professor]`                  |
+| `save_professores(path, lista)`  | `professores.csv` | Persiste lista de professores              |
+| `load_turmas(path)`              | `turmas.csv`      | Retorna `List[Turma]`                      |
+| `save_turmas(path, lista)`       | `turmas.csv`      | Persiste lista de turmas                   |
+| `load_salas(path)`               | `salas.csv`       | Retorna `List[Sala]`                       |
+| `save_salas(path, lista)`        | `salas.csv`       | Persiste lista de salas                    |
+| `load_faltas(path)`              | `faltas.csv`      | Retorna `List[Falta]` com campo `substituto` |
+| `save_faltas(path, lista)`       | `faltas.csv`      | Persiste lista de faltas com `substituto`  |
+| `save_grade(path, grade)`        | arquivo escolhido | Exporta grade com separador `;`, UTF-8-BOM |
 
 ---
 
 ### `src/scheduler.py` — `Scheduler`
 
-Implementa o algoritmo de geração da grade.
+Algoritmo de geração da grade horária.
 
 **Constantes:**
 - `DIAS`: `["Segunda", "Terça", "Quarta", "Quinta", "Sexta"]`
@@ -213,59 +343,14 @@ Implementa o algoritmo de geração da grade.
 
 1. Para cada turma, determina o bloco (`Manhã`/`Noite`) pelo nome
 2. Para cada disciplina da turma, tenta alocar 4 aulas distribuídas nos 5 dias
-3. Busca professor disponível via `_get_professores_disponiveis()`
-4. Prioriza o professor com menor `aulas_atribuidas`
-5. Registra alerta se nenhum professor puder ser alocado
+3. Busca professor via `_get_professores_disponiveis(disciplina, dia, bloco, horario)`
+4. Prioriza professor com menor `aulas_atribuidas`
+5. Registra alerta se nenhum professor puder ser alocado no slot
 
-**Regras de alocação:**
-- O professor deve lecionar a disciplina solicitada
-- O professor deve ter disponibilidade no `dia-bloco` correspondente
-- O professor não pode estar ocupado no mesmo `dia + horário` (verificado por `_professor_ocupado()`)
-
----
-
-### `src/professor_manager.py` — `ProfessorManager`
-
-Página de CRUD de professores. Herda `tk.Frame`.
-
-**Campos do formulário:**
-- Nome
-- Disciplinas (separadas por vírgula)
-- Disponibilidade (ex: `Seg-Manhã, Ter-Noite`)
-
-**Validações:**
-- Todos os campos obrigatórios
-- Nome único (sem duplicatas)
-
-**Operações:** Adicionar, Atualizar, Deletar, Limpar campos. Seleção na Treeview preenche o formulário automaticamente.
-
----
-
-### `src/turma_manager.py` — `TurmaManager`
-
-Página de CRUD de turmas. Herda `tk.Frame`.
-
-**Campos do formulário:**
-- Nome
-- Carga Horária (inteiro)
-- Disciplinas (separadas por vírgula)
-- Sala Preferencial (Combobox populado pelo `SalaManager`)
-
-**Regra de sala compartilhada:**
-- Máximo de 2 turmas por sala
-- Se já houver 1 turma na sala, a nova deve ter exatamente as mesmas disciplinas
-
-**Método público:** `update_sala_options()` — chamado automaticamente pelo `SalaManager` ao salvar alterações de salas.
-
----
-
-### `src/sala_manager.py` — `SalaManager`
-
-Página de CRUD de salas. Herda `tk.Frame`.
-
-**Campos:** Número da sala + checkbox "É Laboratório?"
-
-Ao salvar qualquer alteração, chama `TurmaManager.update_sala_options()` para manter o Combobox de salas sincronizado.
+**Regras de alocação (idênticas às do módulo de substituição):**
+- Professor deve lecionar a disciplina solicitada
+- Professor deve ter `"Dia-Bloco"` em `disponibilidade` (ex: `"Segunda-Manhã"`)
+- Professor não pode estar em outro slot com mesmo `(dia, horario)` na grade atual
 
 ---
 
@@ -275,87 +360,102 @@ Módulo completo de gestão de faltas. Herda `tk.Frame`.
 
 #### Seções da página
 
-**1. Dashboard de métricas**
-
-Quatro cards atualizados em tempo real:
+**1. Dashboard de métricas (4 cards)**
 
 | Card              | Cálculo                                              |
 |-------------------|------------------------------------------------------|
 | Faltas Hoje       | Total de registros com `data == hoje`                |
 | Faltas na Semana  | Registros dentro da semana corrente (seg–dom)        |
-| Prof. Ausentes    | Número de professores distintos ausentes hoje        |
+| Prof. Ausentes    | Professores distintos ausentes hoje                  |
 | Aulas Afetadas    | Aulas da grade cujo professor está ausente hoje      |
 
-**2. Banner de status**
+**2. Gráficos de análise**
 
-- Verde + "✅ Está tudo certo" — nenhuma falta hoje
-- Vermelho + "⚠️ X falta(s)..." — com contagem de ausentes e aulas afetadas
+`FaltaBarChart` embutido — Faltas por Turma e por Matéria. Atualizado a cada registro ou remoção de falta.
 
-**3. Formulário de registro**
+**3. Banner de status**
 
-- Data (DD/MM/AAAA, padrão: hoje)
-- Professor (Combobox com professores cadastrados)
-- Motivo (opcional)
-- Impede registro duplicado para o mesmo professor/data
+| Situação              | Cor    | Mensagem                                         |
+|-----------------------|--------|--------------------------------------------------|
+| Nenhuma falta hoje    | Verde  | ✅ Está tudo certo                               |
+| Faltas sem cobertura  | Vermelho | ⚠️ X falta(s) — Y sem cobertura               |
+| Todas com substituto  | Âmbar  | 🔄 X aula(s) com substituto atribuído           |
 
-**4. Relatório de Validação**
+**4. Formulário de registro**
 
-Treeview com a grade completa filtrada por data:
+- Data (DD/MM/AAAA, padrão: hoje), Professor (Combobox), Motivo (opcional)
+- Impede duplicata para o mesmo professor/data
+- Ao confirmar, abre automaticamente o **dialog de substituição**
 
-| Tag TTK     | Visual                         | Condição                        |
-|-------------|--------------------------------|---------------------------------|
-| `absent`    | fundo `#FEE2E2`, texto vermelho | Professor marcado como ausente  |
-| `present`   | fundo `#DCFCE7`, texto verde    | Professor presente              |
-| `unknown`   | fundo padrão, texto cinza       | Sem filtro de data aplicado     |
+**5. Dialog de substituição automática**
 
-**5. Lista de faltas registradas**
+Modal que abre logo após o registro da falta (e pode ser reaberto via botão "👤 Atribuir Substituto"):
 
-Treeview com todas as faltas em vermelho, ordenadas por data decrescente. Permite remover registro selecionado.
+1. Lista as aulas afetadas pelo professor ausente naquele dia
+2. Executa `find_substitutes()` e exibe os candidatos rankeados:
+   - `★` = cobre todas as aulas
+   - `◎` = cobertura parcial, mostra contagem
+3. Combobox pré-selecionado com o melhor candidato
+4. **Confirmar** → salva o nome em `falta.substituto` e persiste
+5. **Registrar sem substituto** → mantém `falta.substituto = ""`
 
-**6. Exportação**
+Se nenhum candidato for encontrado, exibe mensagem explicando os critérios necessários (disciplina, disponibilidade, sem conflito).
 
-| Botão                           | Arquivo gerado              | Conteúdo                                                        |
-|---------------------------------|-----------------------------|-----------------------------------------------------------------|
-| Relatório de Faltas (CSV)       | `relatorio_faltas_YYYYMMDD` | Data, Professor, Motivo, Turmas/Disciplinas/Salas afetadas, coluna "Substituto" vazia |
-| Grade Validada com Status (CSV) | `grade_validada_YYYYMMDD`   | Grade completa com coluna Status: `Presente` ou `FALTA - SEM COBERTURA` |
+**6. Relatório de Validação da Grade**
 
-Ambos os arquivos usam separador `;` e encoding `utf-8-sig`.
+Treeview da grade completa filtrada por data:
+
+| Tag TTK   | Visual                           | Condição                               |
+|-----------|----------------------------------|----------------------------------------|
+| `present` | fundo verde, texto verde         | Professor presente                     |
+| `absent`  | fundo vermelho, texto vermelho   | Ausente sem substituto atribuído       |
+| `covered` | fundo âmbar, texto âmbar         | Ausente mas com substituto — `🔄 Nome` |
+| `unknown` | fundo padrão, texto cinza        | Sem filtro de data aplicado            |
+
+**7. Lista de faltas registradas**
+
+| Tag TTK   | Visual        | Condição                          |
+|-----------|---------------|-----------------------------------|
+| `falta`   | fundo vermelho | Sem substituto                   |
+| `coberta` | fundo âmbar   | Com substituto atribuído — `✅ Nome` |
+
+Botões: "Remover Falta Selecionada" + "👤 Atribuir Substituto" (reabre dialog para a falta selecionada).
+
+**8. Exportação**
+
+| Botão                           | Conteúdo da coluna "Substituto"                    |
+|---------------------------------|----------------------------------------------------|
+| Relatório de Faltas (CSV)       | Nome do substituto ou `"A preencher"` se vazio     |
+| Grade Validada com Status (CSV) | Status: `Presente`, `COBERTO — Nome` ou `FALTA - SEM COBERTURA` + coluna "Substituto" separada |
+
+Ambos usam separador `;` e encoding `utf-8-sig`.
 
 ---
 
-### `src/rounded_frame.py` — `RoundedFrame`
+### `src/professor_manager.py`, `turma_manager.py`, `sala_manager.py`
 
-Componente `tk.Canvas` que renderiza um retângulo com cantos arredondados via polígono suavizado (`smooth=True`).
+Páginas de CRUD padrão. Herdam `tk.Frame`. Mesma estrutura:
+- Formulário superior (card branco)
+- Treeview inferior com scroll
 
-Parâmetros do construtor:
-
-| Parâmetro       | Padrão    | Descrição                     |
-|-----------------|-----------|-------------------------------|
-| `bg_color`      | `#111827` | Cor de preenchimento interna  |
-| `border_color`  | `#1F2937` | Cor da borda                  |
-| `corner_radius` | `16`      | Raio dos cantos em pixels     |
-| `padding`       | `12`      | Espaço interno                |
-
-Método `set_border_color(color)` permite atualizar a cor da borda dinamicamente (usado anteriormente para animações).
-
-> **Nota:** o componente ainda está disponível no código porém não é mais utilizado nas páginas após a migração para o tema claro. Os cards agora são `tk.Frame` com `highlightbackground`.
+**Regra de sala compartilhada** (`TurmaManager`): máximo de 2 turmas por sala; se já houver 1, a nova deve ter as mesmas disciplinas. `update_sala_options()` é chamado pelo `SalaManager` ao salvar para manter o Combobox de salas sincronizado.
 
 ---
 
 ## Estrutura dos arquivos CSV
 
-Todos os arquivos internos usam `,` como separador e encoding `utf-8-sig`.
+Arquivos internos: separador `,`, encoding `utf-8-sig`.
 
 ### `professores.csv`
 ```
 nome,disciplina,disponibilidade
-Prof. Silva,Matematica,Seg-Manha,Ter-Noite
+João Silva,Matemática,Segunda-Manhã,Terça-Noite
 ```
 
 ### `turmas.csv`
 ```
 nome,carga_horaria,disciplinas,sala
-Turma A,20,Matematica,Fisica,101
+Turma A,20,Matemática;Física,101
 ```
 
 ### `salas.csv`
@@ -367,8 +467,8 @@ Lab A,Sim
 
 ### `faltas.csv`
 ```
-data,professor,dia_semana,bloco,horario,motivo,registrado_em
-11/06/2024,Prof. Silva,Seg,Manha,1,Doenca,11/06/2024 08:30
+data,professor,dia_semana,bloco,horario,motivo,registrado_em,substituto
+11/06/2026,João Silva,Seg,Manhã,1,Doença,11/06/2026 08:30,Maria Souza
 ```
 
 ---
@@ -376,46 +476,70 @@ data,professor,dia_semana,bloco,horario,motivo,registrado_em
 ## Fluxo de uso típico
 
 1. Execute `python main.py`
-2. Acesse **Salas** na sidebar → cadastre as salas disponíveis
-3. Acesse **Professores** → cadastre professores com disciplinas e disponibilidade
-4. Acesse **Turmas** → cadastre turmas, associando disciplinas e sala preferencial
-5. Acesse **Dashboard** → clique em **Gerar Grade** e verifique alertas
-6. Exporte a grade com **Exportar CSV** (arquivo pronto para Excel)
-7. Acesse **Faltas** → registre ausências diárias dos professores
-8. Use **Visualizar** no relatório para ver a grade com faltas destacadas em vermelho
-9. Exporte o relatório de faltas para envio à Secretaria
+2. **Salas** → cadastre as salas disponíveis
+3. **Professores** → cadastre com disciplinas e disponibilidade no formato `"Dia-Bloco"` (ex: `Segunda-Manhã`)
+4. **Turmas** → associe disciplinas e sala preferencial
+5. **Dashboard** → clique **Gerar Grade** → verifique alertas tipados e o Mapa de Presença
+6. Exporte a grade com **Exportar CSV**
+7. **Faltas** → registre ausências; o dialog de substituição abre automaticamente
+8. Confirme ou troque o substituto sugerido
+9. O Relatório de Validação mostra verde (presente), vermelho (sem cobertura) ou âmbar (coberto)
+10. Exporte o relatório para envio à Secretaria — coluna Substituto já preenchida
 
 ---
 
-## Comportamento do algoritmo de grade
+## Algoritmo de substituição
 
-- 5 dias × 4 horários × blocos (Manhã/Noite) = estrutura base
-- Cada turma recebe até 5 disciplinas × 4 aulas = 20 slots por semana
-- O bloco da turma é inferido pelo nome (ex: turmas com `Noite` no nome → bloco Noite)
-- Professores são priorizados pelo menor número de aulas já atribuídas
-- Conflitos de horário são detectados e registrados como alertas
-- A `carga_horaria` da turma está registrada para uso futuro; o algoritmo atual usa sempre 20 slots
+```
+falta registrada
+       │
+       ▼
+affected_classes(falta, grade)
+  → aulas do dia cujo professor == ausente
+       │
+       ▼
+find_substitutes(falta, grade, professores)
+  para cada professor (≠ ausente):
+    para cada aula afetada:
+      ✓ mesma disciplina?
+      ✓ "Dia-Bloco" em disponibilidade?
+      ✓ sem conflito (dia, horario) na grade?
+    → calcula score e covers_all
+  → ordena: covers_all primeiro, depois score desc
+       │
+       ▼
+Dialog exibe candidatos → usuário confirma
+       │
+       ▼
+falta.substituto = nome_escolhido
+DataHandler.save_faltas(...)
+```
 
 ---
 
 ## Compatibilidade dos arquivos exportados
 
-| Configuração      | Valor        | Motivo                                              |
-|-------------------|--------------|-----------------------------------------------------|
-| Encoding          | `utf-8-sig`  | BOM sinaliza UTF-8 para o Excel abrir sem configuração |
-| Separador         | `;`          | Padrão do Excel em locale português (PT-BR/PT-PT)   |
-| Quebra de linha   | `\r\n`       | Padrão CSV/Windows, sem linhas em branco extras     |
+| Configuração    | Valor       | Motivo                                                     |
+|-----------------|-------------|------------------------------------------------------------|
+| Encoding        | `utf-8-sig` | BOM sinaliza UTF-8 para o Excel abrir sem configuração     |
+| Separador       | `;`         | Padrão do Excel em locale português (PT-BR/PT-PT)          |
+| Quebra de linha | `\r\n`      | Padrão CSV/Windows, sem linhas em branco extras            |
 
 ---
 
-## Extensões sugeridas
+## Dependências
 
-- Adicionar campo `bloco` diretamente em `turmas.csv` para eliminar inferência pelo nome
-- Respeitar `carga_horaria` real no algoritmo do `Scheduler`
-- Implementar filtro/pesquisa nas Treeviews
-- Adicionar campo de substituto diretamente no módulo de faltas
-- Histórico de grades geradas com data/hora
-- Testes automatizados para `Scheduler` e `DataHandler`
+| Pacote       | Uso                                           | Obrigatório |
+|--------------|-----------------------------------------------|-------------|
+| `tkinter`    | Interface gráfica (incluso no Python)         | Sim         |
+| `matplotlib` | Gráficos de barras no dashboard e na página de faltas | Recomendado |
+
+Para instalar matplotlib:
+```bash
+pip install matplotlib
+```
+
+Sem matplotlib, os gráficos de barra exibem um placeholder de texto. O Mapa de Presença (`GradeHeatmap`) é Canvas puro e funciona sem dependências externas.
 
 ---
 
@@ -428,5 +552,5 @@ python main.py
 Verificação de sintaxe sem abrir a janela:
 
 ```bash
-python -m py_compile src/app.py
+python -m py_compile src/app.py src/absence_manager.py src/charts.py src/animations.py src/substitution.py
 ```

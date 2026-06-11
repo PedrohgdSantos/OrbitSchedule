@@ -104,17 +104,19 @@ class DataHandler:
                 horario=row.get("horario", ""),
                 motivo=row.get("motivo", ""),
                 registrado_em=row.get("registrado_em", ""),
+                substituto=row.get("substituto", ""),
             ))
         return faltas
 
     @staticmethod
     def save_faltas(file_path: str, faltas: List[Falta]):
-        FIELDS = ["data", "professor", "dia_semana", "bloco", "horario", "motivo", "registrado_em"]
+        FIELDS = ["data", "professor", "dia_semana", "bloco", "horario",
+                  "motivo", "registrado_em", "substituto"]
         DataHandler._write_csv(
             file_path,
             [{"data": f.data, "professor": f.professor, "dia_semana": f.dia_semana,
               "bloco": f.bloco, "horario": f.horario, "motivo": f.motivo,
-              "registrado_em": f.registrado_em}
+              "registrado_em": f.registrado_em, "substituto": f.substituto}
              for f in faltas],
             FIELDS,
         )

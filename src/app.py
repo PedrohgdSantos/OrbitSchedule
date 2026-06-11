@@ -9,6 +9,8 @@ from .turma_manager import TurmaManager
 from .sala_manager import SalaManager
 from .absence_manager import AbsenceManager
 from .models import Aula
+from .animations import fade_page, count_up, lerp_color
+from .charts import FaltaBarChart, GradeHeatmap
 
 # ── Design tokens ──────────────────────────────────────────────────────────────
 BG_PAGE     = "#F5F6FA"
@@ -26,6 +28,8 @@ BLUE        = "#2563EB"
 BLUE_BG     = "#DBEAFE"
 RED         = "#DC2626"
 RED_BG      = "#FEE2E2"
+AMBER       = "#D97706"
+AMBER_BG    = "#FEF3C7"
 FONT        = "Segoe UI"
 
 
@@ -37,13 +41,16 @@ def _card(parent, **kwargs):
 
 def _btn(parent, text, cmd, primary=False, danger=False, small=False):
     if primary:
-        bg, fg, abg, afg = ORANGE, "#FFFFFF", "#EA6C0A", "#FFFFFF"
+        bg, fg, abg, afg = ORANGE,   "#FFFFFF", "#EA6C0A", "#FFFFFF"
+        hover_bg = "#EA6C0A"
     elif danger:
-        bg, fg, abg, afg = RED, "#FFFFFF", "#B91C1C", "#FFFFFF"
+        bg, fg, abg, afg = RED,      "#FFFFFF", "#B91C1C", "#FFFFFF"
+        hover_bg = "#B91C1C"
     else:
-        bg, fg, abg, afg = BG_CARD, TEXT_DARK, BG_PAGE, TEXT_DARK
+        bg, fg, abg, afg = BG_CARD,  TEXT_DARK, BG_PAGE,  TEXT_DARK
+        hover_bg = BG_PAGE
     px = 12 if small else 18
-    py = 5 if small else 8
+    py = 5  if small else 8
     b = tk.Button(
         parent, text=text, command=cmd,
         bg=bg, fg=fg, activebackground=abg, activeforeground=afg,
@@ -51,6 +58,9 @@ def _btn(parent, text, cmd, primary=False, danger=False, small=False):
         padx=px, pady=py, cursor="hand2",
     )
     b.config(highlightbackground=BORDER, highlightthickness=1)
+    # Instant hover color — smooth lerp would need root access here.
+    b.bind("<Enter>", lambda _e: b.config(bg=hover_bg))
+    b.bind("<Leave>", lambda _e: b.config(bg=bg))
     return b
 
 
@@ -157,7 +167,8 @@ class SchedulerApp:
             ("faltas",      "📋", "Faltas"),
         ]
 
-        self._nav_btns: dict = {}
+        self._nav_btns: dict  = {}
+        self._hover_jobs: dict = {}
         nav_wrap = tk.Frame(self.sidebar_frame, bg=BG_SIDEBAR)
         nav_wrap.pack(fill="x", pady=(10, 0))
 
@@ -173,35 +184,62 @@ class SchedulerApp:
 
             for w in (row, icon_lbl, text_lbl):
                 w.bind("<Button-1>", lambda e, k=key: self._navigate(k))
-                w.bind("<Enter>",    lambda e, r=row, i=icon_lbl, t=text_lbl: self._nav_hover(r, i, t, True))
-                w.bind("<Leave>",    lambda e, r=row, i=icon_lbl, t=text_lbl: self._nav_hover(r, i, t, False))
+                w.bind("<Enter>",    lambda e, k=key, r=row, i=icon_lbl, t=text_lbl: self._nav_hover(k, r, i, t, True))
+                w.bind("<Leave>",    lambda e, k=key, r=row, i=icon_lbl, t=text_lbl: self._nav_hover(k, r, i, t, False))
 
             self._nav_btns[key] = (row, icon_lbl, text_lbl)
 
-    def _nav_hover(self, row, icon, text, entering):
+    def _nav_hover(self, key: str, row, icon, text, entering: bool):
+        # Never re-style the currently active nav item.
         if row.cget("bg") == ORANGE:
             return
-        col = ORANGE_DIM if entering else BG_SIDEBAR
-        row.config(bg=col)
-        icon.config(bg=col)
-        text.config(bg=col)
+        target = ORANGE_DIM if entering else BG_SIDEBAR
+
+        # Cancel any in-progress animation for this key.
+        if key in self._hover_jobs:
+            try:
+                self.root.after_cancel(self._hover_jobs[key])
+            except Exception:
+                pass
+
+        from_col  = row.cget("bg")
+        MAX_STEPS = 6
+        widgets   = [row, icon, text]
+
+        def _step(step: int):
+            if row.cget("bg") == ORANGE:   # became active during animation
+                return
+            color = lerp_color(from_col, target, step / MAX_STEPS)
+            for w in widgets:
+                try:
+                    w.config(bg=color)
+                except tk.TclError:
+                    pass
+            if step < MAX_STEPS:
+                self._hover_jobs[key] = self.root.after(14, lambda: _step(step + 1))
+
+        _step(1)
 
     def _navigate(self, page_key: str):
-        for key, (row, icon, text) in self._nav_btns.items():
-            if key == page_key:
-                row.config(bg=ORANGE)
-                icon.config(bg=ORANGE, fg="#FFFFFF")
-                text.config(bg=ORANGE, fg="#FFFFFF")
-            else:
-                row.config(bg=BG_SIDEBAR)
-                icon.config(bg=BG_SIDEBAR, fg=TEXT_MID)
-                text.config(bg=BG_SIDEBAR, fg=TEXT_MID)
+        def _switch():
+            for key, (row, icon, text) in self._nav_btns.items():
+                if key == page_key:
+                    row.config(bg=ORANGE)
+                    icon.config(bg=ORANGE, fg="#FFFFFF")
+                    text.config(bg=ORANGE, fg="#FFFFFF")
+                else:
+                    row.config(bg=BG_SIDEBAR)
+                    icon.config(bg=BG_SIDEBAR, fg=TEXT_MID)
+                    text.config(bg=BG_SIDEBAR, fg=TEXT_MID)
 
-        for key, page in self._pages.items():
-            if key == page_key:
-                page.pack(fill="both", expand=True)
-            else:
-                page.pack_forget()
+            for key, page in self._pages.items():
+                if key == page_key:
+                    page.pack(fill="both", expand=True)
+                else:
+                    page.pack_forget()
+
+        # Fade window → switch → fade back  (~280 ms total)
+        fade_page(self.root, _switch)
 
     # ── Pages ──────────────────────────────────────────────────────────────────
 
@@ -294,17 +332,47 @@ class SchedulerApp:
         self.grade_summary_label.pack(anchor="w", padx=PAD, pady=(8, 0))
 
         # ── Alerts ────────────────────────────────────────────────────────────
-        sec_hdr(inner, "Alertas e Status", PAD, top_pad=22)
-        alert_card = _card(inner)
-        alert_card.pack(fill="x", padx=PAD)
-        self.alert_text = tk.Text(
-            alert_card, height=5,
-            font=("Consolas", 9), relief="flat",
-            bg=BG_CARD, fg=TEXT_DARK, bd=0,
-            padx=14, pady=12, insertbackground=TEXT_DARK,
+        alert_hdr_row = sec_hdr(inner, "Alertas e Status", PAD, top_pad=22)
+        self._alert_status_lbl = tk.Label(
+            alert_hdr_row, text="", bg=BG_PAGE,
+            font=(FONT, 9, "bold"),
         )
-        self.alert_text.pack(fill="both", expand=True)
-        self.alert_text.config(state=tk.DISABLED)
+        self._alert_status_lbl.pack(side="right")
+
+        self.alert_card = _card(inner)
+        self.alert_card.pack(fill="x", padx=PAD)
+
+        # Scrollable inner frame for individual alert blocks
+        _ac = tk.Canvas(self.alert_card, bg=BG_CARD, highlightthickness=0, height=170)
+        _ac_vsb = ttk.Scrollbar(self.alert_card, orient="vertical", command=_ac.yview)
+        _ac.configure(yscrollcommand=_ac_vsb.set)
+        _ac_vsb.pack(side="right", fill="y")
+        _ac.pack(fill="both", expand=True)
+        self._alert_inner = tk.Frame(_ac, bg=BG_CARD)
+        _aid = _ac.create_window((0, 0), window=self._alert_inner, anchor="nw")
+        _ac.bind("<Configure>", lambda e: _ac.itemconfig(_aid, width=e.width))
+        self._alert_inner.bind("<Configure>", lambda _e: _ac.configure(scrollregion=_ac.bbox("all")))
+        self._alert_canvas = _ac
+        self._alert_has_error = False
+
+        # ── Faltas analysis charts ────────────────────────────────────────────
+        sec_hdr(inner, "Análise de Faltas", PAD, top_pad=26)
+        chart_card = _card(inner)
+        chart_card.pack(fill="x", padx=PAD)
+        self._chart_faltas = FaltaBarChart(chart_card)
+        self._chart_faltas.pack(fill="both", expand=True)
+
+        # ── Schedule presence heatmap ─────────────────────────────────────────
+        sec_hdr(inner, "Grade Horária — Mapa de Presença", PAD, top_pad=20)
+        heatmap_card = _card(inner)
+        heatmap_card.pack(fill="x", padx=PAD)
+        tk.Label(
+            heatmap_card,
+            text="Verde = aula com professor presente  •  Vermelho = professor ausente  •  Cinza = sem aula",
+            bg=BG_CARD, fg=TEXT_LIGHT, font=(FONT, 8),
+        ).pack(anchor="w", padx=16, pady=(10, 0))
+        self._chart_heatmap = GradeHeatmap(heatmap_card)
+        self._chart_heatmap.pack(fill="both", expand=True)
 
         # ── Grade table ───────────────────────────────────────────────────────
         sec_hdr(inner, "Grade Horária Gerada", PAD, top_pad=26)
@@ -337,31 +405,90 @@ class SchedulerApp:
     # ── Helpers ────────────────────────────────────────────────────────────────
 
     def update_alert_text(self, message: str, append: bool = False):
-        self.alert_text.config(state=tk.NORMAL)
         if not append:
-            self.alert_text.delete(1.0, tk.END)
-        self.alert_text.insert(tk.END, message)
-        self.alert_text.config(state=tk.DISABLED)
-        self.alert_text.see(tk.END)
+            for w in self._alert_inner.winfo_children():
+                w.destroy()
+            self._alert_has_error = False
+            self.alert_card.config(highlightbackground=BORDER, highlightthickness=1)
+            self._alert_status_lbl.config(text="")
+
+        for raw in message.split("\n"):
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith("✅") or "sucesso" in line.lower() or "concluído" in line.lower():
+                kind = "success"
+            elif line.startswith("❌") or line.lower().startswith("erro"):
+                kind = "error"
+            elif line.startswith("⚠️") or line.startswith("•") or "falta" in line.lower():
+                kind = "warning"
+            else:
+                kind = "info"
+
+            if kind in ("error", "warning"):
+                self._alert_has_error = True
+
+            self._render_alert_block(line, kind)
+
+        # Update card border and status badge
+        if self._alert_has_error:
+            self.alert_card.config(highlightbackground=RED, highlightthickness=2)
+            self._alert_status_lbl.config(text="● Há problemas", fg=RED)
+        else:
+            self.alert_card.config(highlightbackground=GREEN, highlightthickness=1)
+            if self._alert_inner.winfo_children():
+                self._alert_status_lbl.config(text="● OK", fg=GREEN)
+
+        self._alert_canvas.yview_moveto(1.0)
+
+    def _render_alert_block(self, text: str, kind: str):
+        """Render one alert line as a styled block with a left accent bar."""
+        palette = {
+            "success": (GREEN,    GREEN_BG),
+            "error":   (RED,      RED_BG),
+            "warning": (AMBER,    AMBER_BG),
+            "info":    (BLUE,     BLUE_BG),
+        }
+        fg, bg = palette.get(kind, palette["info"])
+
+        row = tk.Frame(self._alert_inner, bg=bg)
+        row.pack(fill="x", pady=1, padx=0)
+
+        tk.Frame(row, bg=fg, width=4).pack(side="left", fill="y")
+        tk.Label(
+            row, text=text,
+            bg=bg, fg=TEXT_DARK if kind == "info" else fg,
+            font=(FONT, 9), anchor="w",
+            padx=12, pady=5, justify="left",
+        ).pack(side="left", fill="x", expand=True)
 
     def update_dashboard_summary(self):
         if not hasattr(self, "dashboard_labels"):
             return
-        self.dashboard_labels["Professores"].config(
-            text=str(len(self.professor_manager.professores) if hasattr(self, "professor_manager") else 0)
-        )
-        self.dashboard_labels["Turmas"].config(
-            text=str(len(self.turma_manager.turmas) if hasattr(self, "turma_manager") else 0)
-        )
-        self.dashboard_labels["Salas"].config(
-            text=str(len(self.sala_manager.salas) if hasattr(self, "sala_manager") else 0)
-        )
-        self.dashboard_labels["Aulas"].config(
-            text=str(len(self.grade_gerada))
-        )
+        counts = {
+            "Professores": len(self.professor_manager.professores) if hasattr(self, "professor_manager") else 0,
+            "Turmas":      len(self.turma_manager.turmas)          if hasattr(self, "turma_manager")     else 0,
+            "Salas":       len(self.sala_manager.salas)            if hasattr(self, "sala_manager")      else 0,
+            "Aulas":       len(self.grade_gerada),
+        }
+        for title, value in counts.items():
+            # count_up animates from the label's current number to the new value
+            count_up(self.dashboard_labels[title], value, self.root)
 
     def set_status(self, message: str):
         self.status_var.set(message)
+
+    def refresh_charts(self):
+        """Push updated faltas + grade data to all chart widgets."""
+        faltas = getattr(self.absence_manager, "faltas", []) if hasattr(self, "absence_manager") else []
+        grade  = self.grade_gerada
+        if hasattr(self, "_chart_faltas"):
+            self._chart_faltas.refresh(faltas, grade)
+        if hasattr(self, "_chart_heatmap"):
+            self._chart_heatmap.refresh(faltas, grade)
+        # Also refresh the absence manager's inline chart if present.
+        if hasattr(self, "absence_manager") and hasattr(self.absence_manager, "refresh_charts"):
+            self.absence_manager.refresh_charts()
 
     # ── Actions ────────────────────────────────────────────────────────────────
 
@@ -401,6 +528,7 @@ class SchedulerApp:
                 self.set_status("Não foi possível gerar a grade.")
 
             self.update_dashboard_summary()
+            self.refresh_charts()
 
             if alertas:
                 self.update_alert_text("\n⚠️  Problemas encontrados:\n\n", append=True)
@@ -436,6 +564,7 @@ class SchedulerApp:
             self.grade_tree.delete(i)
         self.grade_summary_label.config(text="Nenhuma aula gerada.")
         self.update_dashboard_summary()
+        self.refresh_charts()
         self.set_status("Grade limpa.")
         self.update_alert_text("Grade limpa.\n")
 
